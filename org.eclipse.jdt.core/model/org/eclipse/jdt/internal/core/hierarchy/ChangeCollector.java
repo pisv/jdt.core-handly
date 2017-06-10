@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2013 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -19,6 +19,7 @@ import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.IJavaElementDelta;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.internal.core.ISimpleDelta;
 import org.eclipse.jdt.internal.core.JavaElement;
 import org.eclipse.jdt.internal.core.SimpleDelta;
 
@@ -77,7 +78,7 @@ public class ChangeCollector {
 				getAllTypesFromElement(cu, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType type = (IType)allTypes.get(i);
-					addTypeAddition(type, (SimpleDelta)this.changes.get(type));
+					addTypeAddition(type, (ISimpleDelta)this.changes.get(type));
 				}
 				break;
 			case IJavaElementDelta.REMOVED:
@@ -85,7 +86,7 @@ public class ChangeCollector {
 				getAllTypesFromHierarchy((JavaElement)cu, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType type = (IType)allTypes.get(i);
-					addTypeRemoval(type, (SimpleDelta)this.changes.get(type));
+					addTypeRemoval(type, (ISimpleDelta)this.changes.get(type));
 				}
 				break;
 			case IJavaElementDelta.CHANGED:
@@ -100,7 +101,7 @@ public class ChangeCollector {
 			addAffectedChildren(newDelta);
 			return;
 		}
-		SimpleDelta existingDelta = (SimpleDelta)this.changes.get(importContainer);
+		ISimpleDelta existingDelta = (ISimpleDelta)this.changes.get(importContainer);
 		if (existingDelta != null) {
 			switch (newKind) {
 				case IJavaElementDelta.ADDED:
@@ -132,7 +133,7 @@ public class ChangeCollector {
 	}
 
 	private void addChange(IImportDeclaration importDecl, IJavaElementDelta newDelta) {
-		SimpleDelta existingDelta = (SimpleDelta)this.changes.get(importDecl);
+		ISimpleDelta existingDelta = (ISimpleDelta)this.changes.get(importDecl);
 		int newKind = newDelta.getKind();
 		if (existingDelta != null) {
 			switch (newKind) {
@@ -175,7 +176,7 @@ public class ChangeCollector {
 				getAllTypesFromElement(member, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType innerType = (IType)allTypes.get(i);
-					addTypeAddition(innerType, (SimpleDelta)this.changes.get(innerType));
+					addTypeAddition(innerType, (ISimpleDelta)this.changes.get(innerType));
 				}
 				break;
 			case IJavaElementDelta.REMOVED:
@@ -183,7 +184,7 @@ public class ChangeCollector {
 				getAllTypesFromHierarchy((JavaElement)member, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType type = (IType)allTypes.get(i);
-					addTypeRemoval(type, (SimpleDelta)this.changes.get(type));
+					addTypeRemoval(type, (ISimpleDelta)this.changes.get(type));
 				}
 				break;
 			case IJavaElementDelta.CHANGED:
@@ -197,7 +198,7 @@ public class ChangeCollector {
 	 */
 	private void addChange(IType type, IJavaElementDelta newDelta) throws JavaModelException {
 		 int newKind = newDelta.getKind();
-		SimpleDelta existingDelta = (SimpleDelta)this.changes.get(type);
+		ISimpleDelta existingDelta = (ISimpleDelta)this.changes.get(type);
 		switch (newKind) {
 			case IJavaElementDelta.ADDED:
 				addTypeAddition(type, existingDelta);
@@ -205,7 +206,7 @@ public class ChangeCollector {
 				getAllTypesFromElement(type, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType innerType = (IType)allTypes.get(i);
-					addTypeAddition(innerType, (SimpleDelta)this.changes.get(innerType));
+					addTypeAddition(innerType, (ISimpleDelta)this.changes.get(innerType));
 				}
 				break;
 			case IJavaElementDelta.REMOVED:
@@ -214,7 +215,7 @@ public class ChangeCollector {
 				getAllTypesFromHierarchy((JavaElement)type, allTypes);
 				for (int i = 0, length = allTypes.size(); i < length; i++) {
 					IType innerType = (IType)allTypes.get(i);
-					addTypeRemoval(innerType, (SimpleDelta)this.changes.get(innerType));
+					addTypeRemoval(innerType, (ISimpleDelta)this.changes.get(innerType));
 				}
 				break;
 			case IJavaElementDelta.CHANGED:
@@ -224,7 +225,7 @@ public class ChangeCollector {
 		}
 	}
 
-	private void addTypeAddition(IType type, SimpleDelta existingDelta) throws JavaModelException {
+	private void addTypeAddition(IType type, ISimpleDelta existingDelta) throws JavaModelException {
 		if (existingDelta != null) {
 			switch (existingDelta.getKind()) {
 				case IJavaElementDelta.REMOVED:
@@ -258,7 +259,7 @@ public class ChangeCollector {
 		}
 	}
 
-	private void addTypeChange(IType type, int newFlags, SimpleDelta existingDelta) throws JavaModelException {
+	private void addTypeChange(IType type, int newFlags, ISimpleDelta existingDelta) throws JavaModelException {
 		if (existingDelta != null) {
 			switch (existingDelta.getKind()) {
 				case IJavaElementDelta.CHANGED:
@@ -305,7 +306,7 @@ public class ChangeCollector {
 		}
 	}
 
-	private void addTypeRemoval(IType type, SimpleDelta existingDelta) {
+	private void addTypeRemoval(IType type, ISimpleDelta existingDelta) {
 		if (existingDelta != null) {
 			switch (existingDelta.getKind()) {
 				case IJavaElementDelta.ADDED:

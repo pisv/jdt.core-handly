@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -20,6 +20,7 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
@@ -71,7 +72,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	 * These are all of the directory zip entries, and any directories implied
 	 * by the path of class files contained in the jar of this package fragment root.
 	 */
-	protected boolean computeChildren(OpenableElementInfo info, IResource underlyingResource) throws JavaModelException {
+	protected void computeChildren(PackageFragmentRootInfo info, IResource underlyingResource) throws JavaModelException {
 		HashtableOfArrayToObject rawPackageInfo = new HashtableOfArrayToObject();
 		IJavaElement[] children;
 		ZipFile jar = null;
@@ -109,17 +110,16 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 				throw new JavaModelException(e);
 			}
 		} finally {
-			JavaModelManager.getJavaModelManager().closeZipFile(jar);
+			hModelManager().closeZipFile(jar);
 		}
 
 		info.setChildren(children);
 		((JarPackageFragmentRootInfo) info).rawPackageInfo = rawPackageInfo;
-		return true;
 	}
 	/**
 	 * Returns a new element info for this element.
 	 */
-	protected Object createElementInfo() {
+	protected PackageFragmentRootInfo createElementInfo() {
 		return new JarPackageFragmentRootInfo();
 	}
 	/**
@@ -153,7 +153,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	 * @exception CoreException if an error occurs accessing the jar
 	 */
 	public ZipFile getJar() throws CoreException {
-		return JavaModelManager.getJavaModelManager().getZipFile(getPath());
+		return hModelManager().getZipFile(getPath());
 	}
 	/**
 	 * @see IPackageFragmentRoot
@@ -213,6 +213,18 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public int hashCode() {
 		return this.jarPath.hashCode();
 	}
+	@Override
+	public boolean hCanEqual(Object obj) {
+		return obj instanceof JarPackageFragmentRoot;
+	}
+	@Override
+	public void hToStringAncestors(StringBuilder builder, IContext context) {
+		if (isExternal())
+			// don't show project as it is irrelevant for external jar files.
+			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
+			return;
+		super.hToStringAncestors(builder, context);
+	}
 	private void initRawPackageInfo(HashtableOfArrayToObject rawPackageInfo, String entryName, boolean isDirectory, String compliance) {
 		int lastSeparator = isDirectory ? entryName.length()-1 : entryName.lastIndexOf('/');
 		String[] pkgName = Util.splitOn('/', entryName, 0, lastSeparator);
@@ -224,7 +236,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 			if (existing != null) break;
 			existingLength--;
 		}
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
+		JavaModelManager manager = hModelManager();
 		for (int i = existingLength; i < length; i++) {
 			// sourceLevel must be null because we know nothing about it based on a jar file
 			if (Util.isValidFolderNameForPackage(pkgName[i], null, compliance)) {
@@ -287,14 +299,6 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 		} else {
 			return super.resourceExists(underlyingResource);
 		}
-	}
-
-	protected void toStringAncestors(StringBuffer buffer) {
-		if (isExternal())
-			// don't show project as it is irrelevant for external jar files.
-			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
-			return;
-		super.toStringAncestors(buffer);
 	}
 
 	public URL getIndexPath() {

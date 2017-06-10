@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -91,6 +91,8 @@ import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences.PreferenceChangeEvent;
 import org.eclipse.core.runtime.preferences.IPreferencesService;
 import org.eclipse.core.runtime.preferences.InstanceScope;
+import org.eclipse.handly.model.IModel;
+import org.eclipse.handly.model.impl.IModelManager;
 import org.eclipse.jdt.core.ClasspathContainerInitializer;
 import org.eclipse.jdt.core.IAccessRule;
 import org.eclipse.jdt.core.IClassFile;
@@ -105,7 +107,6 @@ import org.eclipse.jdt.core.IJavaModelStatusConstants;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.eclipse.jdt.core.IParent;
 import org.eclipse.jdt.core.IProblemRequestor;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaConventions;
@@ -138,7 +139,6 @@ import org.eclipse.jdt.internal.core.search.processing.IJob;
 import org.eclipse.jdt.internal.core.search.processing.JobManager;
 import org.eclipse.jdt.internal.core.util.HashtableOfArrayToObject;
 import org.eclipse.jdt.internal.core.util.LRUCache;
-import org.eclipse.jdt.internal.core.util.LRUCache.Stats;
 import org.eclipse.jdt.internal.core.util.Messages;
 import org.eclipse.jdt.internal.core.util.Util;
 import org.eclipse.jdt.internal.core.util.WeakHashSet;
@@ -164,7 +164,7 @@ import org.xml.sax.SAXException;
  * the static method <code>JavaModelManager.getJavaModelManager()</code>.
  */
 @SuppressWarnings({ "rawtypes", "unchecked" })
-public class JavaModelManager implements ISaveParticipant, IContentTypeChangeListener {
+public class JavaModelManager implements IModelManager, ISaveParticipant, IContentTypeChangeListener {
 	private static ServiceRegistration<DebugOptionsListener> DEBUG_REGISTRATION;
 	private static final String NON_CHAINING_JARS_CACHE = "nonChainingJarsCache"; //$NON-NLS-1$
 	private static final String EXTERNAL_FILES_CACHE = "externalFilesCache";  //$NON-NLS-1$
@@ -1160,15 +1160,7 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 	 */
 	private static JavaModelManager MANAGER= new JavaModelManager();
 
-	/**
-	 * Infos cache.
-	 */
-	private JavaModelCache cache;
-
-	/*
-	 * Temporary cache of newly opened elements
-	 */
-	private ThreadLocal temporaryCache = new ThreadLocal();
+	private JavaElementManager elementManager;
 
 	/**
 	 * Set of elements which are out of sync with their buffers.
@@ -1883,14 +1875,13 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 		if (info.useCount == 0) { // info cannot be null here (check was done above)
 			// remove infos + close buffer (since no longer working copy)
 			// outside the perWorkingCopyInfos lock (see bug 50667)
-			removeInfoAndChildren(workingCopy);
-			workingCopy.closeBuffer();
+			workingCopy.close();
 
 			// compute the delta if needed and register it if there are changes
 			if (deltaBuilder != null) {
-				deltaBuilder.buildDeltas();
-				if (deltaBuilder.delta != null) {
-					getDeltaProcessor().registerJavaModelDelta(deltaBuilder.delta);
+				deltaBuilder.buildDelta();
+				if (!deltaBuilder.isEmptyDelta()) {
+					getDeltaProcessor().registerJavaModelDelta(deltaBuilder.getDelta());
 				}
 			}
 		}
@@ -2029,22 +2020,15 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 	/**
 	 *  Returns the info for the element.
 	 */
-	public synchronized Object getInfo(IJavaElement element) {
-		HashMap tempCache = (HashMap)this.temporaryCache.get();
-		if (tempCache != null) {
-			Object result = tempCache.get(element);
-			if (result != null) {
-				return result;
-			}
-		}
-		return this.cache.getInfo(element);
+	public Object getInfo(IJavaElement element) {
+		return ((JavaElement) element).hFindBody();
 	}
 
 	/**
 	 *  Returns the existing element in the cache that is equal to the given element.
 	 */
-	public synchronized IJavaElement getExistingElement(IJavaElement element) {
-		return this.cache.getExistingElement(element);
+	public IJavaElement getExistingElement(IJavaElement element) {
+		return this.elementManager.getExistingElement(element);
 	}
 
 	public HashSet getExternalWorkingCopyProjects() {
@@ -2106,6 +2090,11 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 		return this.preferencesLookup[PREF_DEFAULT];
 	}
 
+	@Override
+	public JavaElementManager getElementManager() {
+		return this.elementManager;
+	}
+
 	/**
 	 * Returns the handle to the active Java Model.
 	 */
@@ -2144,6 +2133,11 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 			}
 		}
 		return info.savedState;
+	}
+
+	@Override
+	public final IModel getModel() {
+		return getJavaModel();
 	}
 
 	public String getOption(String optionName) {
@@ -2467,19 +2461,6 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 		new Exception("<Fake exception>").printStackTrace(System.out); //$NON-NLS-1$
 	}
 
-	/**
-	 * Returns the temporary cache for newly opened elements for the current thread.
-	 * Creates it if not already created.
-	 */
-	public HashMap getTemporaryCache() {
-		HashMap result = (HashMap)this.temporaryCache.get();
-		if (result == null) {
-			result = new HashMap();
-			this.temporaryCache.set(result);
-		}
-		return result;
-	}
-
 	private File getVariableAndContainersFile() {
 		return JavaCore.getPlugin().getStateLocation().append("variablesAndContainers.dat").toFile(); //$NON-NLS-1$
 	}
@@ -2755,13 +2736,6 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 			addInvalidArchive(path);
 			throw new CoreException(new Status(IStatus.ERROR, JavaCore.PLUGIN_ID, -1, Messages.status_IOException, e));
 		}
-	}
-
-	/*
-	 * Returns whether there is a temporary cache for the current thread.
-	 */
-	public boolean hasTemporaryCache() {
-		return this.temporaryCache.get() != null;
 	}
 
 	/*
@@ -3772,96 +3746,17 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 	}
 
 	/**
-	 *  Returns the info for this element without
-	 *  disturbing the cache ordering.
-	 */
-	protected synchronized Object peekAtInfo(IJavaElement element) {
-		HashMap tempCache = (HashMap)this.temporaryCache.get();
-		if (tempCache != null) {
-			Object result = tempCache.get(element);
-			if (result != null) {
-				return result;
-			}
-		}
-		return this.cache.peekAtInfo(element);
-	}
-
-	/**
 	 * @see ISaveParticipant
 	 */
 	public void prepareToSave(ISaveContext context) /*throws CoreException*/ {
 		// nothing to do
 	}
-	/*
-	 * Puts the infos in the given map (keys are IJavaElements and values are JavaElementInfos)
-	 * in the Java model cache in an atomic way if the info is not already present in the cache. 
-	 * If the info is already present in the cache, it depends upon the forceAdd parameter.
-	 * If forceAdd is false it just returns the existing info and if true, this element and it's children are closed and then 
-	 * this particular info is added to the cache.
-	 */
-	protected synchronized Object putInfos(IJavaElement openedElement, Object newInfo, boolean forceAdd, Map newElements) {
-		// remove existing children as the are replaced with the new children contained in newElements
-		Object existingInfo = this.cache.peekAtInfo(openedElement);
-		if (existingInfo != null && !forceAdd) {
-			// If forceAdd is false, then it could mean that the particular element 
-			// wasn't in cache at that point of time, but would have got added through 
-			// another thread. In that case, removing the children could remove it's own
-			// children. So, we should not remove the children but return the already existing 
-			// info.
-			// https://bugs.eclipse.org/bugs/show_bug.cgi?id=372687
-			return existingInfo;
-		}
-		if (openedElement instanceof IParent) {
-			closeChildren(existingInfo);
-		}
-
-		// Need to put any JarPackageFragmentRoot in first.
-		// This is due to the way the LRU cache flushes entries.
-		// When a JarPackageFragment is flushed from the LRU cache, the entire
-		// jar is flushed by removing the JarPackageFragmentRoot and all of its
-		// children (see ElementCache.close()). If we flush the JarPackageFragment
-		// when its JarPackageFragmentRoot is not in the cache and the root is about to be
-		// added (during the 'while' loop), we will end up in an inconsistent state.
-		// Subsequent resolution against package in the jar would fail as a result.
-		// https://bugs.eclipse.org/bugs/show_bug.cgi?id=102422
-		// (theodora)
-		for(Iterator it = newElements.entrySet().iterator(); it.hasNext(); ) {
-			Map.Entry entry = (Map.Entry)it.next();
-			IJavaElement element = (IJavaElement)entry.getKey();
-			if (element instanceof JarPackageFragmentRoot) {
-				Object info = entry.getValue();
-				it.remove();
-				this.cache.putInfo(element, info);
-			}
-		}
-
-		Iterator iterator = newElements.entrySet().iterator();
-		while (iterator.hasNext()) {
-			Map.Entry entry = (Map.Entry) iterator.next();
-			this.cache.putInfo((IJavaElement) entry.getKey(), entry.getValue());
-		}
-		return newInfo;
-	}
-
-	private void closeChildren(Object info) {
-		if (info instanceof JavaElementInfo) {
-			IJavaElement[] children = ((JavaElementInfo)info).getChildren();
-			for (int i = 0, size = children.length; i < size; ++i) {
-				JavaElement child = (JavaElement) children[i];
-				try {
-					child.close();
-				} catch (JavaModelException e) {
-					// ignore
-				}
-			}
-		}
-	}
 
 	/*
 	 * Remember the info for the jar binary type
 	 */
-	protected synchronized void putJarTypeInfo(IJavaElement type, Object info) {
-		this.cache.jarTypeCache.put(type, info);
+	void putJarTypeInfo(IJavaElement type, Object info) {
+		this.elementManager.putJarTypeInfo(type, info);
 	}
 
 	/**
@@ -3965,61 +3860,6 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 		this.searchScopes.put(scope, null);
 	}
 
-	/*
-	 * Removes all cached info for the given element (including all children)
-	 * from the cache.
-	 * Returns the info for the given element, or null if it was closed.
-	 */
-	public synchronized Object removeInfoAndChildren(JavaElement element) throws JavaModelException {
-		Object info = this.cache.peekAtInfo(element);
-		if (info != null) {
-			boolean wasVerbose = false;
-			try {
-				if (JavaModelCache.VERBOSE) {
-					String elementType;
-					switch (element.getElementType()) {
-						case IJavaElement.JAVA_PROJECT:
-							elementType = "project"; //$NON-NLS-1$
-							break;
-						case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-							elementType = "root"; //$NON-NLS-1$
-							break;
-						case IJavaElement.PACKAGE_FRAGMENT:
-							elementType = "package"; //$NON-NLS-1$
-							break;
-						case IJavaElement.CLASS_FILE:
-							elementType = "class file"; //$NON-NLS-1$
-							break;
-						case IJavaElement.COMPILATION_UNIT:
-							elementType = "compilation unit"; //$NON-NLS-1$
-							break;
-						default:
-							elementType = "element"; //$NON-NLS-1$
-					}
-					System.out.println(Thread.currentThread() + " CLOSING "+ elementType + " " + element.toStringWithAncestors());  //$NON-NLS-1$//$NON-NLS-2$
-					wasVerbose = true;
-					JavaModelCache.VERBOSE = false;
-				}
-				element.closing(info);
-				if (element instanceof IParent) {
-					closeChildren(info);
-				}
-				this.cache.removeInfo(element);
-				if (wasVerbose) {
-					System.out.println(this.cache.toStringFillingRation("-> ")); //$NON-NLS-1$
-				}
-			} finally {
-				JavaModelCache.VERBOSE = wasVerbose;
-			}
-			return info;
-		}
-		return null;
-	}
-
-	void removeFromJarTypeCache(BinaryType type) {
-		this.cache.removeFromJarTypeCache(type);
-	}
-
 	public void removePerProjectInfo(JavaProject javaProject, boolean removeExtJarInfo) {
 		synchronized(this.perProjectInfos) { // use the perProjectInfo collection as its own lock
 			IProject project = javaProject.getProject();
@@ -4069,8 +3909,8 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 	/*
 	 * Resets the cache that holds on binary type in jar files
 	 */
-	protected synchronized void resetJarTypeCache() {
-		this.cache.resetJarTypeCache();
+	void resetJarTypeCache() {
+		this.elementManager.resetJarTypeCache();
 	}
 	
 	public void resetClasspathListCache() {
@@ -4082,13 +3922,6 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 			this.externalFiles.clear();
 		if (this.assumedExternalFiles != null)
 			this.assumedExternalFiles.clear();
-	}
-
-	/*
-	 * Resets the temporary cache for newly created elements to null.
-	 */
-	public void resetTemporaryCache() {
-		this.temporaryCache.set(null);
 	}
 
 	/**
@@ -5097,8 +4930,7 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 
 	public void startup() throws CoreException {
 		try {
-			// initialize Java model cache
-			this.cache = new JavaModelCache();
+			this.elementManager = new JavaElementManager();
 
 			// request state folder creation (workaround 19885)
 			JavaCore.getPlugin().getStateLocation();
@@ -5355,15 +5187,11 @@ public class JavaModelManager implements ISaveParticipant, IContentTypeChangeLis
 		}
 	}
 
-	public synchronized String cacheToString(String prefix) {
-		return this.cache.toStringFillingRation(prefix);
+	public String cacheToString(String prefix) {
+		return this.elementManager.cacheToString(prefix);
 	}
-	
-	public Stats debugNewOpenableCacheStats() {
-		return this.cache.openableCache.new Stats();
-	}
-	
+
 	public int getOpenableCacheSize() {
-		return this.cache.openableCache.getSpaceLimit();
+		return this.elementManager.getOpenableCacheSize();
 	}
 }

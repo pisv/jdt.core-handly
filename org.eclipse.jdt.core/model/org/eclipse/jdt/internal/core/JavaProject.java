@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -27,6 +27,7 @@ import java.util.Map;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -49,6 +50,7 @@ import org.eclipse.core.runtime.QualifiedName;
 import org.eclipse.core.runtime.content.IContentDescription;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.IScopeContext;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathContainer;
 import org.eclipse.jdt.core.IClasspathEntry;
@@ -444,51 +446,17 @@ public class JavaProject
 	 * Adds a builder to the build spec for the given project.
 	 */
 	protected void addToBuildSpec(String builderID) throws CoreException {
-
+	
 		IProjectDescription description = this.project.getDescription();
 		int javaCommandIndex = getJavaCommandIndex(description.getBuildSpec());
-
+	
 		if (javaCommandIndex == -1) {
-
+	
 			// Add a Java command to the build spec
 			ICommand command = description.newCommand();
 			command.setBuilderName(builderID);
 			setJavaCommand(description, command);
 		}
-	}
-	/**
-	 * @see Openable
-	 */
-	protected boolean buildStructure(OpenableElementInfo info, IProgressMonitor pm, Map newElements, IResource underlyingResource) throws JavaModelException {
-		// cannot refresh cp markers on opening (emulate cp check on startup) since can create deadlocks (see bug 37274)
-		IClasspathEntry[] resolvedClasspath = getResolvedClasspath();
-
-		// compute the pkg fragment roots
-		info.setChildren(computePackageFragmentRoots(resolvedClasspath, false, null /*no reverse map*/));
-
-		return true;
-	}
-
-	/* (non-Javadoc)
-	 * @see org.eclipse.jdt.internal.core.JavaElement#close()
-	 */
-	public void close() throws JavaModelException {
-		if (JavaProject.hasJavaNature(this.project)) {
-			// Get cached preferences if exist
-			JavaModelManager.PerProjectInfo perProjectInfo = JavaModelManager.getJavaModelManager().getPerProjectInfo(this.project, false);
-			if (perProjectInfo != null && perProjectInfo.preferences != null) {
-				IEclipsePreferences eclipseParentPreferences = (IEclipsePreferences) perProjectInfo.preferences.parent();
-				if (this.preferencesNodeListener != null) {
-					eclipseParentPreferences.removeNodeChangeListener(this.preferencesNodeListener);
-					this.preferencesNodeListener = null;
-				}
-				if (this.preferencesChangeListener != null) {
-					perProjectInfo.preferences.removePreferenceChangeListener(this.preferencesChangeListener);
-					this.preferencesChangeListener = null;
-				}
-			}
-		}
-		super.close();
 	}
 
 	/**
@@ -888,13 +856,6 @@ public class JavaProject
 				e.printStackTrace();
 			}
 		}
-	}
-
-	/**
-	 * Returns a new element info for this element.
-	 */
-	protected Object createElementInfo() {
-		return new JavaProjectElementInfo();
 	}
 
 	/**
@@ -1483,7 +1444,7 @@ public class JavaProject
 	public IEclipsePreferences getEclipsePreferences() {
 		if (!JavaProject.hasJavaNature(this.project)) return null;
 		// Get cached preferences if exist
-		JavaModelManager.PerProjectInfo perProjectInfo = JavaModelManager.getJavaModelManager().getPerProjectInfo(this.project, true);
+		JavaModelManager.PerProjectInfo perProjectInfo = hModelManager().getPerProjectInfo(this.project, true);
 		if (perProjectInfo.preferences != null) return perProjectInfo.preferences;
 		// Init project preferences
 		IScopeContext context = new ProjectScope(getProject());
@@ -1503,7 +1464,7 @@ public class JavaProject
 				}
 				public void removed(IEclipsePreferences.NodeChangeEvent event) {
 					if (event.getChild() == eclipsePreferences) {
-						JavaModelManager.getJavaModelManager().resetProjectPreferences(JavaProject.this);
+						hModelManager().resetProjectPreferences(JavaProject.this);
 					}
 				}
 			};
@@ -1517,7 +1478,7 @@ public class JavaProject
 		this.preferencesChangeListener = new IEclipsePreferences.IPreferenceChangeListener() {
 			public void preferenceChange(IEclipsePreferences.PreferenceChangeEvent event) {
 				String propertyName = event.getKey();
-				JavaModelManager manager = JavaModelManager.getJavaModelManager();
+				JavaModelManager manager = hModelManager();
 				if (propertyName.startsWith(JavaCore.PLUGIN_ID)) {
 					if (propertyName.equals(JavaCore.CORE_JAVA_BUILD_CLEAN_OUTPUT_FOLDER) ||
 						propertyName.equals(JavaCore.CORE_JAVA_BUILD_RESOURCE_COPY_FILTER) ||
@@ -1654,7 +1615,7 @@ public class JavaProject
 	 * @see org.eclipse.jdt.core.IJavaProject#getOption(String, boolean)
 	 */
 	public String getOption(String optionName, boolean inheritJavaCoreOptions) {
-		return JavaModelManager.getJavaModelManager().getOption(optionName, inheritJavaCoreOptions, getEclipsePreferences());
+		return hModelManager().getOption(optionName, inheritJavaCoreOptions, getEclipsePreferences());
 	}
 
 	/**
@@ -1668,7 +1629,7 @@ public class JavaProject
 		// Get project specific options
 		JavaModelManager.PerProjectInfo perProjectInfo = null;
 		Hashtable projectOptions = null;
-		JavaModelManager javaModelManager = JavaModelManager.getJavaModelManager();
+		JavaModelManager javaModelManager = hModelManager();
 		HashSet optionNames = javaModelManager.optionNames;
 		try {
 			perProjectInfo = getPerProjectInfo();
@@ -1906,7 +1867,7 @@ public class JavaProject
 	}
 
 	public JavaModelManager.PerProjectInfo getPerProjectInfo() throws JavaModelException {
-		return JavaModelManager.getJavaModelManager().getPerProjectInfoCheckExistence(this.project);
+		return hModelManager().getPerProjectInfoCheckExistence(this.project);
 	}
 
 	private IPath getPluginWorkingLocation() {
@@ -1975,7 +1936,7 @@ public class JavaProject
 	 * @see IJavaProject
 	 */
 	public IClasspathEntry[] getResolvedClasspath(boolean ignoreUnresolvedEntry) throws JavaModelException {
-		if  (JavaModelManager.getJavaModelManager().isClasspathBeingResolved(this)) {
+		if  (hModelManager().isClasspathBeingResolved(this)) {
 			if (JavaModelManager.CP_RESOLVE_VERBOSE_ADVANCED)
 				verbose_reentering_classpath_resolution();
 		    return RESOLUTION_IN_PROGRESS;
@@ -2097,7 +2058,7 @@ public class JavaProject
 	 */
 	public boolean hasBuildState() {
 
-		return JavaModelManager.getJavaModelManager().getLastBuiltState(this.project, null) != null;
+		return hModelManager().getLastBuiltState(this.project, null) != null;
 	}
 
 	/**
@@ -2152,7 +2113,51 @@ public class JavaProject
 		return false;
 	}
 
+	@Override
+	public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+		// cannot refresh cp markers on opening (emulate cp check on startup) since can create deadlocks (see bug 37274)
+		IClasspathEntry[] resolvedClasspath = getResolvedClasspath();
+		
+		JavaProjectElementInfo info = new JavaProjectElementInfo();
 
+		// compute the pkg fragment roots
+		info.setChildren(computePackageFragmentRoots(resolvedClasspath, false, null /*no reverse map*/));
+		info.setIsStructureKnown(true);
+
+		context.get(NEW_ELEMENTS).put(this, info);
+	}
+
+	@Override
+	public void hRemove(IContext context) {
+		if (JavaProject.hasJavaNature(this.project)) {
+			// Get cached preferences if exist
+			JavaModelManager.PerProjectInfo perProjectInfo = hModelManager().getPerProjectInfo(this.project, false);
+			if (perProjectInfo != null && perProjectInfo.preferences != null) {
+				IEclipsePreferences eclipseParentPreferences = (IEclipsePreferences) perProjectInfo.preferences.parent();
+				if (this.preferencesNodeListener != null) {
+					eclipseParentPreferences.removeNodeChangeListener(this.preferencesNodeListener);
+					this.preferencesNodeListener = null;
+				}
+				if (this.preferencesChangeListener != null) {
+					perProjectInfo.preferences.removePreferenceChangeListener(this.preferencesChangeListener);
+					this.preferencesChangeListener = null;
+				}
+			}
+		}
+		super.hRemove(context);
+	}
+
+	@Override
+	public void hValidateExistence(IContext context) throws CoreException {
+		// check whether the java project can be opened
+		try {
+			if (!this.project.hasNature(JavaCore.NATURE_ID))
+				throw hDoesNotExistException();
+			}
+		catch (CoreException e) {
+			throw hDoesNotExistException();
+		}
+	}
 
 	/*
 	 * @see IJavaProject
@@ -2334,8 +2339,7 @@ public class JavaProject
 	 */
 	public NameLookup newNameLookup(WorkingCopyOwner owner) throws JavaModelException {
 
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
-		ICompilationUnit[] workingCopies = owner == null ? null : manager.getWorkingCopies(owner, true/*add primary WCs*/);
+		ICompilationUnit[] workingCopies = owner == null ? null : hModelManager().getWorkingCopies(owner, true/*add primary WCs*/);
 		return newNameLookup(workingCopies);
 	}
 
@@ -2390,7 +2394,7 @@ public class JavaProject
 		if (region == null) {
 			throw new IllegalArgumentException(Messages.hierarchy_nullRegion);
 		}
-		ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+		ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 		CreateTypeHierarchyOperation op =
 			new CreateTypeHierarchyOperation(region, workingCopies, null, true);
 		op.runOperation(monitor);
@@ -2425,7 +2429,7 @@ public class JavaProject
 		if (region == null) {
 			throw new IllegalArgumentException(Messages.hierarchy_nullRegion);
 		}
-		ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+		ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 		CreateTypeHierarchyOperation op =
 			new CreateTypeHierarchyOperation(region, workingCopies, type, true/*compute subtypes*/);
 		op.runOperation(monitor);
@@ -2582,7 +2586,7 @@ public class JavaProject
 	 * Resets this project's caches
 	 */
 	public void resetCaches() {
-		JavaProjectElementInfo info = (JavaProjectElementInfo) JavaModelManager.getJavaModelManager().peekAtInfo(this);
+		JavaProjectElementInfo info = (JavaProjectElementInfo) hPeekAtBody();
 		if (info != null){
 			info.resetCaches();
 		}
@@ -2617,7 +2621,7 @@ public class JavaProject
 	}
 
 	public ResolvedClasspath resolveClasspath(IClasspathEntry[] rawClasspath, IClasspathEntry[] referencedEntries, boolean usePreviousSession, boolean resolveChainedLibraries) throws JavaModelException {
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
+		JavaModelManager manager = hModelManager();
 		ExternalFoldersManager externalFoldersManager = JavaModelManager.getExternalManager();
 		ResolvedClasspath result = new ResolvedClasspath();
 		Map knownDrives = new HashMap();
@@ -2835,7 +2839,7 @@ public class JavaProject
 	public void resolveClasspath(PerProjectInfo perProjectInfo, boolean usePreviousSession, boolean addClasspathChange) throws JavaModelException {
 		if (CP_RESOLUTION_BP_LISTENERS != null)
 			breakpoint(1, this);
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
+		JavaModelManager manager = hModelManager();
 		boolean isClasspathBeingResolved = manager.isClasspathBeingResolved(this);
 		try {
 			if (!isClasspathBeingResolved) {
@@ -2947,7 +2951,7 @@ public class JavaProject
 	public void setOption(String optionName, String optionValue) {
 		// Store option value
 		IEclipsePreferences projectPreferences = getEclipsePreferences();
-		boolean modified = JavaModelManager.getJavaModelManager().storePreference(optionName, optionValue, projectPreferences, null);
+		boolean modified = hModelManager().storePreference(optionName, optionValue, projectPreferences, null);
 
 		// Write changes
 		if (modified) {
@@ -2971,7 +2975,7 @@ public class JavaProject
 				projectPreferences.clear();
 			} else {
 				Iterator<Map.Entry<String, String>> entries = newOptions.entrySet().iterator();
-				JavaModelManager javaModelManager = JavaModelManager.getJavaModelManager();
+				JavaModelManager javaModelManager = hModelManager();
 				while (entries.hasNext()){
 					Map.Entry<String, String> entry = entries.next();
 					String key = entry.getKey();
@@ -3028,7 +3032,7 @@ public class JavaProject
 	public void setProject(IProject project) {
 
 		this.project = project;
-		this.parent = JavaModelManager.getJavaModelManager().getJavaModel();
+		this.parent = hModelManager().getJavaModel();
 	}
 
 	/**
@@ -3096,7 +3100,7 @@ public class JavaProject
 					canModifyResources);
 			op.runOperation(monitor);
 		} catch (JavaModelException e) {
-			JavaModelManager.getJavaModelManager().getDeltaProcessor().flush();
+			hModelManager().getDeltaProcessor().flush();
 			throw e;
 		}
 	}
@@ -3227,15 +3231,4 @@ public class JavaProject
 			}
 		}
 	 }
-
-	protected IStatus validateExistence(IResource underlyingResource) {
-		// check whether the java project can be opened
-		try {
-			if (!((IProject) underlyingResource).hasNature(JavaCore.NATURE_ID))
-				return newDoesNotExistStatus();
-		} catch (CoreException e) {
-			return newDoesNotExistStatus();
-		}
-		return JavaModelStatus.VERIFIED_OK;
-	}
 }

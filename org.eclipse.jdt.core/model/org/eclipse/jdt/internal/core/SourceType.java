@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,12 +10,15 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
+
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.*;
 import org.eclipse.jdt.core.search.SearchEngine;
@@ -45,14 +48,6 @@ public int localOccurrenceCount = 1;
 
 protected SourceType(JavaElement parent, String name) {
 	super(parent, name);
-}
-protected void closing(Object info) throws JavaModelException {
-	super.closing(info);
-	SourceTypeElementInfo elementInfo = (SourceTypeElementInfo) info;
-	ITypeParameter[] typeParameters = elementInfo.typeParameters;
-	for (int i = 0, length = typeParameters.length; i < length; i++) {
-		((TypeParameter) typeParameters[i]).close();
-	}
 }
 /**
  * @see IType
@@ -178,12 +173,6 @@ public IType createType(String contents, IJavaElement sibling, boolean force, IP
 	}
 	op.runOperation(monitor);
 	return (IType) op.getResultElements()[0];
-}
-public boolean equals(Object o) {
-	if (!(o instanceof SourceType)) return false;
-	if (((SourceType) o).isLambda()) 
-		return false;
-	return super.equals(o);
 }
 /*
  * @see IType
@@ -577,6 +566,61 @@ public IType[] getTypes() throws JavaModelException {
 	list.toArray(array);
 	return array;
 }
+@Override
+public boolean hCanEqual(Object obj) {
+	return obj instanceof SourceType;
+}
+@Override
+public void hRemoving(Object body) {
+	SourceTypeElementInfo elementInfo = (SourceTypeElementInfo) body;
+	ITypeParameter[] typeParameters = elementInfo.typeParameters;
+	for (int i = 0, length = typeParameters.length; i < length; i++) {
+		((TypeParameter)typeParameters[i]).hRemove(EMPTY_CONTEXT);
+	}
+	super.hRemoving(body);
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		if (isAnonymous()) {
+			builder.append("<anonymous #"); //$NON-NLS-1$
+			builder.append(this.occurrenceCount);
+			builder.append(">"); //$NON-NLS-1$
+		} else {
+			hToStringName(builder, context);
+		}
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		if (isAnonymous()) {
+			builder.append("<anonymous #"); //$NON-NLS-1$
+			builder.append(this.occurrenceCount);
+			builder.append(">"); //$NON-NLS-1$
+		} else {
+			hToStringName(builder, context);
+		}
+	} else {
+		try {
+			if (isEnum()) {
+				builder.append("enum "); //$NON-NLS-1$
+			} else if (isAnnotation()) {
+				builder.append("@interface "); //$NON-NLS-1$
+			} else if (isInterface()) {
+				builder.append("interface "); //$NON-NLS-1$
+			} else {
+				builder.append("class "); //$NON-NLS-1$
+			}
+			if (isAnonymous()) {
+				builder.append("<anonymous #"); //$NON-NLS-1$
+				builder.append(this.occurrenceCount);
+				builder.append(">"); //$NON-NLS-1$
+			} else {
+				hToStringName(builder, context);
+			}
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 /**
  * @see IType#isAnonymous()
  */
@@ -738,7 +782,7 @@ public ITypeHierarchy newSupertypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), false);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -756,7 +800,7 @@ public ITypeHierarchy newTypeHierarchy(IJavaProject project, WorkingCopyOwner ow
 	if (project == null) {
 		throw new IllegalArgumentException(Messages.hierarchy_nullProject);
 	}
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	ICompilationUnit[] projectWCs = null;
 	if (workingCopies != null) {
 		int length = workingCopies.length;
@@ -826,7 +870,7 @@ public ITypeHierarchy newTypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), true);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -836,51 +880,6 @@ public JavaElement resolved(Binding binding) {
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	resolvedHandle.localOccurrenceCount = this.localOccurrenceCount;
 	return resolvedHandle;
-}
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		if (isAnonymous()) {
-			buffer.append("<anonymous #"); //$NON-NLS-1$
-			buffer.append(this.occurrenceCount);
-			buffer.append(">"); //$NON-NLS-1$
-		} else {
-			toStringName(buffer);
-		}
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		if (isAnonymous()) {
-			buffer.append("<anonymous #"); //$NON-NLS-1$
-			buffer.append(this.occurrenceCount);
-			buffer.append(">"); //$NON-NLS-1$
-		} else {
-			toStringName(buffer);
-		}
-	} else {
-		try {
-			if (isEnum()) {
-				buffer.append("enum "); //$NON-NLS-1$
-			} else if (isAnnotation()) {
-				buffer.append("@interface "); //$NON-NLS-1$
-			} else if (isInterface()) {
-				buffer.append("interface "); //$NON-NLS-1$
-			} else {
-				buffer.append("class "); //$NON-NLS-1$
-			}
-			if (isAnonymous()) {
-				buffer.append("<anonymous #"); //$NON-NLS-1$
-				buffer.append(this.occurrenceCount);
-				buffer.append(">"); //$NON-NLS-1$
-			} else {
-				toStringName(buffer);
-			}
-		} catch (JavaModelException e) {
-			buffer.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 @Override
 public boolean isLambda() {

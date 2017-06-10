@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2010 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 
 /**
@@ -23,10 +24,6 @@ public class PackageDeclaration extends SourceRefElement implements IPackageDecl
 protected PackageDeclaration(CompilationUnit parent, String name) {
 	super(parent);
 	this.name = name;
-}
-public boolean equals(Object o) {
-	if (!(o instanceof PackageDeclaration)) return false;
-	return super.equals(o);
 }
 public String getElementName() {
 	return this.name;
@@ -58,15 +55,9 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	if (checkOwner && cu.isPrimary()) return this;
 	return cu.getPackageDeclaration(this.name);
 }
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	buffer.append("package "); //$NON-NLS-1$
-	toStringName(buffer);
-	if (info == null) {
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	}
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	builder.append("package "); //$NON-NLS-1$
+	super.hToStringName(builder, context);
 }
 }

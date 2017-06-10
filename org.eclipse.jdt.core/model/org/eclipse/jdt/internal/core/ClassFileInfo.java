@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,8 +10,10 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
+
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Map;
 
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
@@ -42,14 +44,14 @@ import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 	 */
 	protected ITypeParameter[] typeParameters;
 
-private void generateAnnotationsInfos(JavaElement member, IBinaryAnnotation[] binaryAnnotations, long tagBits, HashMap newElements) {
+private void generateAnnotationsInfos(JavaElement member, IBinaryAnnotation[] binaryAnnotations, long tagBits, Map newElements) {
 	generateAnnotationsInfos(member, null, binaryAnnotations, tagBits, newElements);
 }
 /**
  * Creates the handles and infos for the annotations of the given binary member.
  * Adds new handles to the given vector.
  */
-private void generateAnnotationsInfos(JavaElement member, char[] parameterName, IBinaryAnnotation[] binaryAnnotations, long tagBits, HashMap newElements) {
+private void generateAnnotationsInfos(JavaElement member, char[] parameterName, IBinaryAnnotation[] binaryAnnotations, long tagBits, Map newElements) {
 	if (binaryAnnotations != null) {
 		for (int i = 0, length = binaryAnnotations.length; i < length; i++) {
 			IBinaryAnnotation annotationInfo = binaryAnnotations[i];
@@ -58,10 +60,10 @@ private void generateAnnotationsInfos(JavaElement member, char[] parameterName, 
 	}
 	generateStandardAnnotationsInfos(member, parameterName, tagBits, newElements);
 }
-private void generateAnnotationInfo(JavaElement parent, HashMap newElements, IBinaryAnnotation annotationInfo, String memberValuePairName) {
+private void generateAnnotationInfo(JavaElement parent, Map newElements, IBinaryAnnotation annotationInfo, String memberValuePairName) {
 	generateAnnotationInfo(parent, null, newElements, annotationInfo, memberValuePairName);
 }
-private void generateAnnotationInfo(JavaElement parent, char[] parameterName, HashMap newElements, IBinaryAnnotation annotationInfo, String memberValuePairName) {
+private void generateAnnotationInfo(JavaElement parent, char[] parameterName, Map newElements, IBinaryAnnotation annotationInfo, String memberValuePairName) {
 	char[] typeName = org.eclipse.jdt.core.Signature.toCharArray(CharOperation.replaceOnCopy(annotationInfo.getTypeName(), '/', '.'));
 	Annotation annotation = new Annotation(parent, new String(typeName), memberValuePairName);
 	while (newElements.containsKey(annotation)) {
@@ -85,7 +87,7 @@ private void generateAnnotationInfo(JavaElement parent, char[] parameterName, Ha
 		}
 	}
 }
-private void generateStandardAnnotationsInfos(JavaElement javaElement, char[] parameterName, long tagBits, HashMap newElements) {
+private void generateStandardAnnotationsInfos(JavaElement javaElement, char[] parameterName, long tagBits, Map newElements) {
 	if ((tagBits & TagBits.AllStandardAnnotationsMask) == 0)
 		return;
 	if ((tagBits & TagBits.AnnotationTargetMASK) != 0) {
@@ -112,7 +114,7 @@ private void generateStandardAnnotationsInfos(JavaElement javaElement, char[] pa
 	// note that JAVA_LANG_SUPPRESSWARNINGS and JAVA_LANG_OVERRIDE cannot appear in binaries
 }
 
-private void generateStandardAnnotation(JavaElement javaElement, char[][] typeName, IMemberValuePair[] members, HashMap newElements) {
+private void generateStandardAnnotation(JavaElement javaElement, char[][] typeName, IMemberValuePair[] members, Map newElements) {
 	IAnnotation annotation = new Annotation(javaElement, new String(CharOperation.concatWith(typeName, '.')));
 	AnnotationInfo annotationInfo = new AnnotationInfo();
 	annotationInfo.members = members;
@@ -205,7 +207,7 @@ private IMemberValuePair[] getRetentionPolicy(long tagBits) {
  * Creates the handles and infos for the fields of the given binary type.
  * Adds new handles to the given vector.
  */
-private void generateFieldInfos(IType type, IBinaryType typeInfo, HashMap newElements, ArrayList childrenHandles) {
+private void generateFieldInfos(IType type, IBinaryType typeInfo, Map newElements, ArrayList childrenHandles) {
 	// Make the fields
 	IBinaryField[] fields = typeInfo.getFields();
 	if (fields == null) {
@@ -244,7 +246,7 @@ private void generateInnerClassHandles(IType type, IBinaryType typeInfo, ArrayLi
  * Creates the handles and infos for the methods of the given binary type.
  * Adds new handles to the given vector.
  */
-private void generateMethodInfos(IType type, IBinaryType typeInfo, HashMap newElements, ArrayList childrenHandles, ArrayList typeParameterHandles) {
+private void generateMethodInfos(IType type, IBinaryType typeInfo, Map newElements, ArrayList childrenHandles, ArrayList typeParameterHandles) {
 	IBinaryMethod[] methods = typeInfo.getMethods();
 	if (methods == null) {
 		return;
@@ -371,7 +373,7 @@ private void generateMethodInfos(IType type, IBinaryType typeInfo, HashMap newEl
  * Creates the handles and infos for the type parameter of the given binary member.
  * Adds new handles to the given vector.
  */
-private void generateTypeParameterInfos(BinaryMember parent, char[] signature, HashMap newElements, ArrayList typeParameterHandles) {
+private void generateTypeParameterInfos(BinaryMember parent, char[] signature, Map newElements, ArrayList typeParameterHandles) {
 	if (signature == null) return;
 	char[][] typeParameterSignatures = Signature.getTypeParameters(signature);
 	for (int i = 0, typeParameterCount = typeParameterSignatures.length; i < typeParameterCount; i++) {
@@ -410,7 +412,7 @@ boolean hasReadBinaryChildren() {
  * <code>ClassFile</code> and adds them to the
  * <code>JavaModelManager</code>'s cache.
  */
-protected void readBinaryChildren(ClassFile classFile, HashMap newElements, IBinaryType typeInfo) {
+protected void readBinaryChildren(ClassFile classFile, Map newElements, IBinaryType typeInfo) {
 	ArrayList childrenHandles = new ArrayList();
 	BinaryType type = (BinaryType) classFile.getType();
 	ArrayList typeParameterHandles = new ArrayList();
@@ -436,24 +438,22 @@ protected void readBinaryChildren(ClassFile classFile, HashMap newElements, IBin
  * Removes the binary children handles and remove their infos from
  * the <code>JavaModelManager</code>'s cache.
  */
-void removeBinaryChildren() throws JavaModelException {
+void removeBinaryChildren() {
 	if (this.binaryChildren != null) {
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
 		for (int i = 0; i <this.binaryChildren.length; i++) {
 			JavaElement child = this.binaryChildren[i];
 			if (child instanceof BinaryType) {
-				manager.removeInfoAndChildren((JavaElement)child.getParent());
+				((JavaElement)child.getParent()).hRemove(EMPTY_CONTEXT);
 			} else {
-				manager.removeInfoAndChildren(child);
+				child.hRemove(EMPTY_CONTEXT);
 			}
 		}
 		this.binaryChildren = JavaElement.NO_ELEMENTS;
 	}
 	if (this.typeParameters != null) {
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
 		for (int i = 0; i <this.typeParameters.length; i++) {
 			TypeParameter typeParameter = (TypeParameter) this.typeParameters[i];
-			manager.removeInfoAndChildren(typeParameter);
+			typeParameter.hRemove(EMPTY_CONTEXT);
 		}
 		this.typeParameters = TypeParameter.NO_TYPE_PARAMETERS;
 	}

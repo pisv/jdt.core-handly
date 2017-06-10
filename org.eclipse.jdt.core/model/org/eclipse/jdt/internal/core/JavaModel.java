@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,9 +11,11 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
+
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Map;
+import java.util.List;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IFolder;
@@ -24,9 +26,15 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.jdt.core.*;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IModel;
+import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.IJavaModel;
+import org.eclipse.jdt.core.IJavaProject;
+import org.eclipse.jdt.core.IOpenable;
+import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.WorkingCopyOwner;
 import org.eclipse.jdt.internal.core.util.MementoTokenizer;
 import org.eclipse.jdt.internal.core.util.Messages;
 
@@ -39,7 +47,7 @@ import org.eclipse.jdt.internal.core.util.Messages;
  * @see IJavaModel
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class JavaModel extends Openable implements IJavaModel {
+public class JavaModel extends Openable implements IJavaModel, IModel {
 
 /**
  * Constructs a new Java Model on the given workspace.
@@ -51,27 +59,6 @@ public class JavaModel extends Openable implements IJavaModel {
  */
 protected JavaModel() throws Error {
 	super(null);
-}
-protected boolean buildStructure(OpenableElementInfo info, IProgressMonitor pm, Map newElements, IResource underlyingResource)	/*throws JavaModelException*/ {
-
-	// determine my children
-	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
-	int length = projects.length;
-	IJavaElement[] children = new IJavaElement[length];
-	int index = 0;
-	for (int i = 0; i < length; i++) {
-		IProject project = projects[i];
-		if (JavaProject.hasJavaNature(project)) {
-			children[index++] = getJavaProject(project);
-		}
-	}
-	if (index < length)
-		System.arraycopy(children, 0, children = new IJavaElement[index], 0, index);
-	info.setChildren(children);
-
-	newElements.put(this, info);
-
-	return true;
 }
 /*
  * @see IJavaModel
@@ -107,12 +94,6 @@ public void copy(IJavaElement[] elements, IJavaElement[] containers, IJavaElemen
 		runOperation(new CopyElementsOperation(elements, containers, force), elements, siblings, renamings, monitor);
 	}
 }
-/**
- * Returns a new element info for this element.
- */
-protected Object createElementInfo() {
-	return new JavaModelInfo();
-}
 
 /**
  * @see IJavaModel
@@ -125,8 +106,13 @@ public void delete(IJavaElement[] elements, boolean force, IProgressMonitor moni
 	}
 }
 public boolean equals(Object o) {
-	if (!(o instanceof JavaModel)) return false;
-	return super.equals(o);
+	return this == o;
+}
+/**
+ * @see IModel
+ */
+public int getApiLevel() {
+	return ApiLevel.CURRENT;
 }
 /**
  * @see IJavaElement
@@ -199,6 +185,12 @@ public IJavaProject[] getJavaProjects() throws JavaModelException {
 
 }
 /**
+ * @see IModel
+ */
+public IContext getModelContext() {
+	return EMPTY_CONTEXT;
+}
+/**
  * @see IJavaModel
  */
 public Object[] getNonJavaResources() throws JavaModelException {
@@ -229,7 +221,35 @@ public IResource getUnderlyingResource() {
 public IWorkspace getWorkspace() {
 	return ResourcesPlugin.getWorkspace();
 }
+public int hashCode() {
+	return System.identityHashCode(this);
+}
+@Override
+public void hBuildStructure(IContext context, IProgressMonitor monitor) {
 
+	// determine my children
+	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+	int length = projects.length;
+	List<IJavaProject> javaProjects = new ArrayList<>(length);
+	for (int i = 0; i < length; i++) {
+		IProject project = projects[i];
+		if (JavaProject.hasJavaNature(project)) {
+			javaProjects.add(getJavaProject(project));
+		}
+	}
+	JavaModelInfo info = new JavaModelInfo();
+	info.setChildren(javaProjects.toArray(NO_ELEMENTS));
+	info.setIsStructureKnown(true);
+	context.get(NEW_ELEMENTS).put(this, info);
+}
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	builder.append("Java Model"); //$NON-NLS-1$
+}
+@Override
+public void hValidateExistence(IContext context) {
+	// always exists
+}
 /**
  * @see IJavaModel
  */
@@ -248,7 +268,7 @@ public void refreshExternalArchives(IJavaElement[] elementsScope, IProgressMonit
 	if (elementsScope == null){
 		elementsScope = new IJavaElement[] { this };
 	}
-	JavaModelManager.getJavaModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
+	hModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
 }
 
 /**
@@ -276,17 +296,6 @@ protected void runOperation(MultiOperation op, IJavaElement[] elements, IJavaEle
 	}
 	op.runOperation(monitor);
 }
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	buffer.append("Java Model"); //$NON-NLS-1$
-	if (info == null) {
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	}
-}
-
 /**
  * Helper method - for the provided {@link IPath}, returns:
  * <ul>
@@ -385,10 +394,5 @@ static private boolean isExternalFile(IPath path) {
  */
 public static File getFile(Object target) {
 	return isFile(target) ? (File) target : null;
-}
-
-protected IStatus validateExistence(IResource underlyingResource) {
-	// Java model always exists
-	return JavaModelStatus.VERIFIED_OK;
 }
 }

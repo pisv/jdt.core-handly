@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2011 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -14,6 +14,7 @@ package org.eclipse.jdt.internal.core;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IBuffer;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaModelStatusConstants;
@@ -70,6 +71,11 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	return new ClassFileWorkingCopy(this.classFile, DefaultWorkingCopyOwner.PRIMARY);
 }
 
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	builder.append(this.classFile.getElementName());
+}
+
 public IResource resource(PackageFragmentRoot root) {
 	if (root.isArchive())
 		return root.resource(root);
@@ -104,10 +110,6 @@ protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelE
 	buffer.addBufferChangedListener(this);
 
 	return buffer;
-}
-
-protected void toStringName(StringBuffer buffer) {
-	buffer.append(this.classFile.getElementName());
 }
 
 }

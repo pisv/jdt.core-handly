@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,6 +9,8 @@
  *     IBM Corporation - initial API and implementation
  *******************************************************************************/
 package org.eclipse.jdt.core.tests.model;
+
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
 
 import java.io.File;
 import java.io.IOException;
@@ -276,7 +278,7 @@ public class AbstractJavaSearchTests extends ModifyingResourceTests implements I
 	public static class JavaSearchResultCollector extends SearchRequestor {
 		int flags = SHOW_POTENTIAL; // default
 		protected SearchMatch match;
-		public StringBuffer results = new StringBuffer(), line;
+		public StringBuilder results = new StringBuilder(), line;
 		public int showFlavors = 0;
 		public int count = 0;
 		List lines = new ArrayList();
@@ -302,7 +304,7 @@ public class AbstractJavaSearchTests extends ModifyingResourceTests implements I
 			try {
 				IResource resource = this.match.getResource();
 				IJavaElement element = getElement(this.match);
-				this.line = new StringBuffer();
+				this.line = new StringBuilder();
 				if ((this.flags & SHOW_MATCH_KIND) != 0) {
 					String matchClassName = this.match.getClass().getName();
 					this.line.append(matchClassName.substring(matchClassName.lastIndexOf('.')+1));
@@ -652,7 +654,7 @@ public class AbstractJavaSearchTests extends ModifyingResourceTests implements I
 			if (anonymous) {
 				this.line.append("<anonymous>");
 			} else if (type.isLambda()) {
-				((LambdaExpression) type).toStringName(this.line);
+				((LambdaExpression) type).hToStringName(this.line, EMPTY_CONTEXT);
 			} else {
 				this.line.append(typeName);
 			}

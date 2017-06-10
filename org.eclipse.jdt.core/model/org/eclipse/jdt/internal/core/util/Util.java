@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -2409,6 +2409,21 @@ public class Util {
 			start = end + 1;
 		}
 		return segs;
+	}
+
+	/**
+	 * If the given <code>CoreException</code> is a Java model exception,
+	 * returns the casted exception. Otherwise, creates a Java model exception
+	 * that wrappers the given <code>CoreException</code>.
+	 * 
+	 * @param e the <code>CoreException</code>
+	 * @return a Java model exception
+	 */
+	public static JavaModelException toJavaModelException(CoreException e) {
+		if (e instanceof JavaModelException)
+			return (JavaModelException) e;
+		else
+			return new JavaModelException(e);
 	}
 
 	/*

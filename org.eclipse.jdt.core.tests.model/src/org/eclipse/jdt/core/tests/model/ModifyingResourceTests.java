@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2008 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,6 +9,9 @@
  *     IBM Corporation - initial API and implementation
  *******************************************************************************/
 package org.eclipse.jdt.core.tests.model;
+
+import static org.eclipse.handly.context.Contexts.*;
+import static org.eclipse.handly.util.ToStringOptions.*;
 
 import java.io.*;
 import java.util.StringTokenizer;
@@ -143,22 +146,25 @@ protected IFile editFile(String path, String content) throws CoreException {
  * of the tree.
  */
 protected String expandAll(IJavaElement element) throws CoreException {
-	StringBuffer buffer = new StringBuffer();
-	this.expandAll(element, 0, buffer);
-	return buffer.toString();
+	StringBuilder builder = new StringBuilder();
+	this.expandAll(element, 0, builder);
+	return builder.toString();
 }
-private void expandAll(IJavaElement element, int tab, StringBuffer buffer) throws CoreException {
+private void expandAll(IJavaElement element, int tab, StringBuilder builder) throws CoreException {
 	IJavaElement[] children = null;
 	// force opening of element by getting its children
 	if (element instanceof IParent) {
 		IParent parent = (IParent)element;
 		children = parent.getChildren();
 	}
-	((JavaElement)element).toStringInfo(tab, buffer);
+	for (int i = tab; i > 0; i--)
+		builder.append("  "); //$NON-NLS-1$
+	((JavaElement)element).hToStringBody(builder, ((JavaElement)element).hPeekAtBody(),
+			with(of(INDENT_LEVEL, tab), of(JavaElement.SHOW_RESOLVED_INFO, true)));
 	if (children != null) {
 		for (int i = 0, length = children.length; i < length; i++) {
-			buffer.append("\n");
-			this.expandAll(children[i], tab+1, buffer);
+			builder.append("\n");
+			this.expandAll(children[i], tab+1, builder);
 		}
 	}
 }

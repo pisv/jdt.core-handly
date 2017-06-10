@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2009 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -13,6 +13,9 @@ package org.eclipse.jdt.internal.core;
 import java.text.NumberFormat;
 import java.util.Date;
 
+import org.eclipse.handly.model.IElement;
+import org.eclipse.handly.model.impl.ElementCache;
+
 public class VerboseElementCache extends ElementCache {
 
 	private Object beingAdded;
@@ -23,11 +26,12 @@ public class VerboseElementCache extends ElementCache {
 		this.name = name;
 	}
 
+	@Override
 	protected boolean makeSpace(int space) {
 		if (this.beingAdded == null) return super.makeSpace(space);
-		String fillingRatio = toStringFillingRation(this.name);
+		String fillingRatio = toStringFillingRatio(this.name);
 		boolean result = super.makeSpace(space);
-		String newFillingRatio = toStringFillingRation(this.name);
+		String newFillingRatio = toStringFillingRatio(this.name);
 		if (!fillingRatio.equals(newFillingRatio)) {
 			System.out.println(Thread.currentThread() + " " + new Date(System.currentTimeMillis()).toString()); //$NON-NLS-1$
 			System.out.println(Thread.currentThread() + " MADE SPACE FOR " + fillingRatio + " (NOW " + NumberFormat.getInstance().format(fillingRatio()) + "% full)"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -37,7 +41,8 @@ public class VerboseElementCache extends ElementCache {
 		return result;
 	}
 
-	public Object put(Object key, Object value) {
+	@Override
+	public Object put(IElement key, Object value) {
 		try {
 			if (this.beingAdded == null)
 				this.beingAdded = key;

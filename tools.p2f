@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<?p2f version='1.0.0'?>
+<p2f version='1.0.0'>
+  <ius size='6'>
+    <iu id='org.eclipse.sdk.ide' version='4.6.0.I20160606-1100'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/releases/neon/201606221000'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.egit.feature.group' version='4.4.0.201606070830-r'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/releases/neon/201606221000'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.pde.api.tools.ee.feature.feature.group' version='1.0.1.v20160419-1303'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/releases/neon/201606221000'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.test.feature.group' version='3.7.100.v20160503-1715'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/eclipse/updates/4.6'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.handly.feature.group'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/handly/releases/0.7/repository'/>
+      </repositories>
+    </iu>
+    <iu id='org.eclipse.handly.source.feature.group'>
+      <repositories size='1'>
+        <repository location='http://download.eclipse.org/handly/releases/0.7/repository'/>
+      </repositories>
+    </iu>
+  </ius>
+</p2f>

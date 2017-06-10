@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.internal.compiler.lookup.Binding;
@@ -25,10 +26,6 @@ public class SourceField extends NamedMember implements IField {
  */
 protected SourceField(JavaElement parent, String name) {
 	super(parent, name);
-}
-public boolean equals(Object o) {
-	if (!(o instanceof SourceField)) return false;
-	return super.equals(o);
 }
 public ASTNode findNode(org.eclipse.jdt.core.dom.CompilationUnit ast) {
 	// For field declarations, a variable declaration fragment is returned
@@ -135,6 +132,27 @@ public String getTypeSignature() throws JavaModelException {
 	SourceFieldElementInfo info = (SourceFieldElementInfo) getElementInfo();
 	return info.getTypeSignature();
 }
+@Override
+public boolean hCanEqual(Object obj) {
+	return obj instanceof SourceField;
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		hToStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		hToStringName(builder, context);
+	} else {
+		try {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+			hToStringName(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#isEnumConstant()
  */public boolean isEnumConstant() throws JavaModelException {
@@ -150,25 +168,5 @@ public JavaElement resolved(Binding binding) {
 	SourceRefElement resolvedHandle = new ResolvedSourceField(this.parent, this.name, new String(binding.computeUniqueKey()));
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	return resolvedHandle;
-}
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		toStringName(buffer);
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		toStringName(buffer);
-	} else {
-		try {
-			buffer.append(Signature.toString(getTypeSignature()));
-			buffer.append(" "); //$NON-NLS-1$
-			toStringName(buffer);
-		} catch (JavaModelException e) {
-			buffer.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 }

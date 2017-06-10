@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2008, 2013 IBM Corporation and others.
+ * Copyright (c) 2008, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,9 +10,12 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.codeassist.impl;
 
+import static org.eclipse.handly.context.Contexts.of;
+import static org.eclipse.handly.context.Contexts.with;
+
 import java.util.Map;
 
-import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IAnnotation;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
@@ -32,10 +35,6 @@ public class AssistSourceField extends ResolvedSourceField {
 		super(parent, name, null);
 		this.bindingCache = bindingCache;
 		this.infoCache = infoCache;
-	}
-
-	public Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
-		return this.infoCache.get(this);
 	}
 
 	/* (non-Javadoc)
@@ -60,13 +59,19 @@ public class AssistSourceField extends ResolvedSourceField {
 		return this.uniqueKey;
 	}
 
+	@Override
+	public Object hFindBody() {
+		return this.infoCache.get(this);
+	}
+
+	@Override
+	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
+	}
+
 	public boolean isResolved() {
 		getKey();
 		return this.isResolved;
-	}
-
-	protected void toStringInfo(int tab, StringBuffer buffer, Object info,boolean showResolvedInfo) {
-		super.toStringInfo(tab, buffer, info, showResolvedInfo && isResolved());
 	}
 
 	public IAnnotation getAnnotation(String annotationName) {

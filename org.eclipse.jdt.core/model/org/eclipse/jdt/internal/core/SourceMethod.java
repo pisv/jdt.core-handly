@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,9 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
+
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.lookup.Binding;
@@ -36,14 +39,6 @@ protected SourceMethod(JavaElement parent, String name, String[] parameterTypes)
 		this.parameterTypes= CharOperation.NO_STRINGS;
 	} else {
 		this.parameterTypes= parameterTypes;
-	}
-}
-protected void closing(Object info) throws JavaModelException {
-	super.closing(info);
-	SourceMethodElementInfo elementInfo = (SourceMethodElementInfo) info;
-	ITypeParameter[] typeParameters = elementInfo.typeParameters;
-	for (int i = 0, length = typeParameters.length; i < length; i++) {
-		((TypeParameter) typeParameters[i]).close();
 	}
 }
 public boolean equals(Object o) {
@@ -205,6 +200,76 @@ public int hashCode() {
 	}
 	return hash;
 }
+@Override
+public boolean hCanEqual(Object obj) {
+	return obj instanceof SourceMethod;
+}
+@Override
+public void hRemoving(Object body) {
+	SourceMethodElementInfo elementInfo = (SourceMethodElementInfo) body;
+	ITypeParameter[] typeParameters = elementInfo.typeParameters;
+	for (int i = 0, length = typeParameters.length; i < length; i++) {
+		((TypeParameter)typeParameters[i]).hRemove(EMPTY_CONTEXT);
+	}
+	super.hRemoving(body);
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object info, IContext context) {
+	if (info == null) {
+		hToStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (info == NO_BODY) {
+		hToStringName(builder, context);
+	} else {
+		SourceMethodElementInfo methodInfo = (SourceMethodElementInfo) info;
+		int flags = methodInfo.getModifiers();
+		if (Flags.isStatic(flags)) {
+			builder.append("static "); //$NON-NLS-1$
+		}
+		if (!methodInfo.isConstructor()) {
+			builder.append(methodInfo.getReturnTypeName());
+			builder.append(' ');
+		}
+		toStringName(builder, flags);
+	}
+}
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	toStringName(builder, 0);
+}
+private void toStringName(StringBuilder builder, int flags) {
+	builder.append(getElementName());
+	builder.append('(');
+	String[] parameters = getParameterTypes();
+	int length;
+	if (parameters != null && (length = parameters.length) > 0) {
+		boolean isVarargs = Flags.isVarargs(flags);
+		for (int i = 0; i < length; i++) {
+			try {
+				if (i < length - 1) {
+					builder.append(Signature.toString(parameters[i]));
+					builder.append(", "); //$NON-NLS-1$
+				} else if (isVarargs) {
+					// remove array from signature
+					String parameter = parameters[i].substring(1);
+					builder.append(Signature.toString(parameter));
+					builder.append(" ..."); //$NON-NLS-1$
+				} else {
+					builder.append(Signature.toString(parameters[i]));
+				}
+			} catch (IllegalArgumentException e) {
+				// parameter signature is malformed
+				builder.append("*** invalid signature: "); //$NON-NLS-1$
+				builder.append(parameters[i]);
+			}
+		}
+	}
+	builder.append(')');
+	if (this.occurrenceCount > 1) {
+		builder.append("#"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+	}
+}
 /**
  * @see IMethod
  */
@@ -267,64 +332,5 @@ public JavaElement resolved(Binding binding) {
 	SourceRefElement resolvedHandle = new ResolvedSourceMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	return resolvedHandle;
-}
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		toStringName(buffer);
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		toStringName(buffer);
-	} else {
-		SourceMethodElementInfo methodInfo = (SourceMethodElementInfo) info;
-		int flags = methodInfo.getModifiers();
-		if (Flags.isStatic(flags)) {
-			buffer.append("static "); //$NON-NLS-1$
-		}
-		if (!methodInfo.isConstructor()) {
-			buffer.append(methodInfo.getReturnTypeName());
-			buffer.append(' ');
-		}
-		toStringName(buffer, flags);
-	}
-}
-protected void toStringName(StringBuffer buffer) {
-	toStringName(buffer, 0);
-}
-protected void toStringName(StringBuffer buffer, int flags) {
-	buffer.append(getElementName());
-	buffer.append('(');
-	String[] parameters = getParameterTypes();
-	int length;
-	if (parameters != null && (length = parameters.length) > 0) {
-		boolean isVarargs = Flags.isVarargs(flags);
-		for (int i = 0; i < length; i++) {
-			try {
-				if (i < length - 1) {
-					buffer.append(Signature.toString(parameters[i]));
-					buffer.append(", "); //$NON-NLS-1$
-				} else if (isVarargs) {
-					// remove array from signature
-					String parameter = parameters[i].substring(1);
-					buffer.append(Signature.toString(parameter));
-					buffer.append(" ..."); //$NON-NLS-1$
-				} else {
-					buffer.append(Signature.toString(parameters[i]));
-				}
-			} catch (IllegalArgumentException e) {
-				// parameter signature is malformed
-				buffer.append("*** invalid signature: "); //$NON-NLS-1$
-				buffer.append(parameters[i]);
-			}
-		}
-	}
-	buffer.append(')');
-	if (this.occurrenceCount > 1) {
-		buffer.append("#"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-	}
 }
 }

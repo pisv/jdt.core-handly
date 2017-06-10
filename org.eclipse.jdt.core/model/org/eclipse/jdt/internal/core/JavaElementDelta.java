@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,24 +11,26 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import static org.eclipse.handly.context.Contexts.*;
+import static org.eclipse.handly.util.ToStringOptions.*;
+import static org.eclipse.handly.util.ToStringOptions.FormatStyle.*;
 
 import org.eclipse.core.resources.IResourceDelta;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
+import org.eclipse.handly.model.IElementDeltaConstants;
+import org.eclipse.handly.model.impl.ElementDelta;
+import org.eclipse.handly.util.IndentPolicy;
+import org.eclipse.handly.util.Property;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaElementDelta;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.internal.core.util.Util;
 
 /**
  * @see IJavaElementDelta
  */
-@SuppressWarnings({"rawtypes", "unchecked"})
-public class JavaElementDelta extends SimpleDelta implements IJavaElementDelta {
-	/**
-	 * @see #getAffectedChildren()
-	 */
-	IJavaElementDelta[] affectedChildren = EMPTY_DELTA;
+public class JavaElementDelta extends ElementDelta implements IJavaElementDelta, ISimpleDelta {
 
 	/*
 	 * The AST created during the last reconcile operation.
@@ -39,66 +41,22 @@ public class JavaElementDelta extends SimpleDelta implements IJavaElementDelta {
 	 */
 	CompilationUnit ast = null;
 
-	/*
-	 * The element that this delta describes the change to.
-	 */
-	IJavaElement changedElement;
-
-	/**
-	 * Collection of resource deltas that correspond to non java resources deltas.
-	 */
-	IResourceDelta[] resourceDeltas = null;
-
-	/**
-	 * Counter of resource deltas
-	 */
-	int resourceDeltasCounter;
-
-	/**
-	 * @see #getMovedFromElement()
-	 */
-	IJavaElement movedFromHandle = null;
-
-	/**
-	 * @see #getMovedToElement()
-	 */
-	IJavaElement movedToHandle = null;
-
 	IJavaElementDelta[] annotationDeltas = EMPTY_DELTA;
 
 	/**
 	 * Empty array of IJavaElementDelta
 	 */
-	static  IJavaElementDelta[] EMPTY_DELTA= new IJavaElementDelta[] {};
+	static final  IJavaElementDelta[] EMPTY_DELTA= new IJavaElementDelta[] {};
 	
-	/**
-	 * Child index is needed iff affectedChildren.length >= NEED_CHILD_INDEX
-	*/
-	static int NEED_CHILD_INDEX = 3;
-	
-	/**
-	 * On-demand index into affectedChildren
-	 */
-	Map<Key, Integer> childIndex;
+	public static final IndentPolicy DELTA_INDENT_POLICY = new IndentPolicy() {
+		@Override
+		public void appendIndent(StringBuilder builder) {
+			builder.append('\t');
+		}
+	};
 
-	/**
-	 * The delta key
-	 */
-	protected static class Key {
-		public final IJavaElement element;
+	public static final Property<Util.Comparer> COMPARER = Property.get(JavaElementDelta.class.getName() + ".comparer", Util.Comparer.class); //$NON-NLS-1$
 
-		public Key(IJavaElement element) {
-			this.element = element;
-		}
-		public int hashCode() {
-			return this.element.hashCode();
-		}
-		public boolean equals(Object obj) {
-			if (!(obj instanceof Key))
-				return false;
-			return equalsAndSameParent(this.element, ((Key) obj).element);
-		}
-	}
 /**
  * Creates the root delta. To create the nested delta
  * hierarchies use the following convenience methods. The root
@@ -113,104 +71,10 @@ public class JavaElementDelta extends SimpleDelta implements IJavaElementDelta {
  * </ul>
  */
 public JavaElementDelta(IJavaElement element) {
-	this.changedElement = element;
+	super((IElement) element);
 }
-/**
- * Adds the child delta to the collection of affected children.  If the
- * child is already in the collection, walk down the hierarchy.
- */
-protected void addAffectedChild(JavaElementDelta child) {
-	switch (this.kind) {
-		case ADDED:
-		case REMOVED:
-			// no need to add a child if this parent is added or removed
-			return;
-		case CHANGED:
-			this.changeFlags |= F_CHILDREN;
-			break;
-		default:
-			this.kind = CHANGED;
-			this.changeFlags |= F_CHILDREN;
-	}
-
-	// if a child delta is added to a compilation unit delta or below,
-	// it's a fine grained delta
-	if (this.changedElement.getElementType() >= IJavaElement.COMPILATION_UNIT) {
-		fineGrained();
-	}
-
-	Key childKey = new Key(child.getElement());
-	Integer existingChildIndex = getChildIndex(childKey);
-	if (existingChildIndex == null) { //new affected child
-		addNewChild(child);
-	} else {
-		JavaElementDelta existingChild = (JavaElementDelta) this.affectedChildren[existingChildIndex];
-		switch (existingChild.getKind()) {
-			case ADDED:
-				switch (child.getKind()) {
-					case ADDED: // child was added then added -> it is added
-					case CHANGED: // child was added then changed -> it is added
-						return;
-					case REMOVED: // child was added then removed -> noop
-						removeExistingChild(childKey, existingChildIndex);
-						return;
-				}
-				break;
-			case REMOVED:
-				switch (child.getKind()) {
-					case ADDED: // child was removed then added -> it is changed
-						child.kind = CHANGED;
-						this.affectedChildren[existingChildIndex] = child;
-						return;
-					case CHANGED: // child was removed then changed -> it is removed
-					case REMOVED: // child was removed then removed -> it is removed
-						return;
-				}
-				break;
-			case CHANGED:
-				switch (child.getKind()) {
-					case ADDED: // child was changed then added -> it is added
-					case REMOVED: // child was changed then removed -> it is removed
-						this.affectedChildren[existingChildIndex] = child;
-						return;
-					case CHANGED: // child was changed then changed -> it is changed
-						IJavaElementDelta[] children = child.getAffectedChildren();
-						for (int i = 0; i < children.length; i++) {
-							JavaElementDelta childsChild = (JavaElementDelta) children[i];
-							existingChild.addAffectedChild(childsChild);
-						}
-
-						// update flags
-						boolean childHadContentFlag = (child.changeFlags & F_CONTENT) != 0;
-						boolean existingChildHadChildrenFlag = (existingChild.changeFlags & F_CHILDREN) != 0;
-						existingChild.changeFlags |= child.changeFlags;
-
-						// remove F_CONTENT flag if existing child had F_CHILDREN flag set
-						// (case of fine grained delta (existing child) and delta coming from
-						// DeltaProcessor (child))
-						if (childHadContentFlag && existingChildHadChildrenFlag) {
-							existingChild.changeFlags &= ~F_CONTENT;
-						}
-
-						// add the non-java resource deltas if needed
-						// note that the child delta always takes precedence over this existing child delta
-						// as non-java resource deltas are always created last (by the DeltaProcessor)
-						IResourceDelta[] resDeltas = child.getResourceDeltas();
-						if (resDeltas != null) {
-							existingChild.resourceDeltas = resDeltas;
-							existingChild.resourceDeltasCounter = child.resourceDeltasCounter;
-						}
-
-						return;
-				}
-				break;
-			default:
-				// unknown -> existing child becomes the child with the existing child's flags
-				int flags = existingChild.getFlags();
-				this.affectedChildren[existingChildIndex] = child;
-				child.changeFlags |= flags;
-		}
-	}
+public void added() {
+	hSetKind(IElementDeltaConstants.ADDED);
 }
 /**
  * Creates the nested deltas resulting from an add operation.
@@ -224,45 +88,23 @@ public void added(IJavaElement element) {
 public void added(IJavaElement element, int flags) {
 	JavaElementDelta addedDelta = new JavaElementDelta(element);
 	addedDelta.added();
-	addedDelta.changeFlags |= flags;
+	addedDelta.hSetFlags(Flags.translate(flags));
 	insertDeltaTree(element, addedDelta);
 }
-/**
- * Adds the new child delta to the collection of affected children.
- */
-protected void addNewChild(JavaElementDelta child) {
-	this.affectedChildren = growAndAddToArray(this.affectedChildren, child);
-	if (this.childIndex != null) {
-		this.childIndex.put(new Key(child.getElement()), this.affectedChildren.length - 1);
-	}
-}
-/**
- * Adds the child delta to the collection of affected children.  If the
- * child is already in the collection, walk down the hierarchy.
- */
 protected void addResourceDelta(IResourceDelta child) {
-	switch (this.kind) {
-		case ADDED:
-		case REMOVED:
-			// no need to add a child if this parent is added or removed
-			return;
-		case CHANGED:
-			this.changeFlags |= F_CONTENT;
-			break;
-		default:
-			this.kind = CHANGED;
-			this.changeFlags |= F_CONTENT;
-	}
-	if (this.resourceDeltas == null) {
-		this.resourceDeltas = new IResourceDelta[5];
-		this.resourceDeltas[this.resourceDeltasCounter++] = child;
+	switch (hKind()) {
+	case IElementDeltaConstants.ADDED:
+	case IElementDeltaConstants.REMOVED:
+		// no need to add a child if this parent is added or removed
 		return;
+	case IElementDeltaConstants.CHANGED:
+		hSetFlags(hFlags() | IElementDeltaConstants.F_CONTENT);
+		break;
+	default:
+		hSetKind(IElementDeltaConstants.CHANGED);
+		hSetFlags(hFlags() | IElementDeltaConstants.F_CONTENT);
 	}
-	if (this.resourceDeltas.length == this.resourceDeltasCounter) {
-		// need a resize
-		System.arraycopy(this.resourceDeltas, 0, (this.resourceDeltas = new IResourceDelta[this.resourceDeltasCounter * 2]), 0, this.resourceDeltasCounter);
-	}
-	this.resourceDeltas[this.resourceDeltasCounter++] = child;
+	hAddResourceDelta(child);
 }
 /**
  * Creates the nested deltas resulting from a change operation.
@@ -276,6 +118,10 @@ public JavaElementDelta changed(IJavaElement element, int changeFlag) {
 	insertDeltaTree(element, changedDelta);
 	return changedDelta;
 }
+public void changed(int flags) {
+	hSetKind(IElementDeltaConstants.CHANGED);
+	hSetFlags(hFlags() | Flags.translate(flags));
+}
 /*
  * Records the last changed AST  .
  */
@@ -284,17 +130,13 @@ public void changedAST(CompilationUnit changedAST) {
 	changed(F_AST_AFFECTED);
 }
 /**
- * Clears the collection of affected children.
- */
-protected void clearAffectedChildren() {
-	this.affectedChildren = EMPTY_DELTA;
-	this.childIndex = null;
-}
-/**
  * Mark this delta as a content changed delta.
  */
 public void contentChanged() {
-	this.changeFlags |= F_CONTENT;
+	hSetFlags(hFlags() | IElementDeltaConstants.F_CONTENT);
+}
+protected void clearAffectedChildren() {
+	hClearAffectedChildren();
 }
 /**
  * Creates the nested deltas for a closed element.
@@ -304,64 +146,8 @@ public void closed(IJavaElement element) {
 	delta.changed(F_CLOSED);
 	insertDeltaTree(element, delta);
 }
-/**
- * Creates the nested delta deltas based on the affected element
- * its delta, and the root of this delta tree. Returns the root
- * of the created delta tree.
- */
-protected JavaElementDelta createDeltaTree(IJavaElement element, JavaElementDelta delta) {
-	JavaElementDelta childDelta = delta;
-	ArrayList ancestors= getAncestors(element);
-	if (ancestors == null) {
-		if (equalsAndSameParent(delta.getElement(), getElement())) { // handle case of two jars that can be equals but not in the same project
-			// the element being changed is the root element
-			this.kind= delta.kind;
-			this.changeFlags = delta.changeFlags;
-			this.movedToHandle = delta.movedToHandle;
-			this.movedFromHandle = delta.movedFromHandle;
-		}
-	} else {
-		for (int i = 0, size = ancestors.size(); i < size; i++) {
-			IJavaElement ancestor = (IJavaElement) ancestors.get(i);
-			JavaElementDelta ancestorDelta = new JavaElementDelta(ancestor);
-			ancestorDelta.addAffectedChild(childDelta);
-			childDelta = ancestorDelta;
-		}
-	}
-	return childDelta;
-}
-/**
- * Returns whether the two java elements are equals and have the same parent.
- */
-protected static boolean equalsAndSameParent(IJavaElement e1, IJavaElement e2) {
-	IJavaElement parent1;
-	return e1.equals(e2) && ((parent1 = e1.getParent()) != null) && parent1.equals(e2.getParent());
-}
-/**
- * Returns the <code>JavaElementDelta</code> for the given element
- * in the delta tree, or null, if no delta for the given element is found.
- */
 protected JavaElementDelta find(IJavaElement e) {
-	if (equalsAndSameParent(getElement(), e)) // handle case of two jars that can be equals but not in the same project
-		return this;
-	return findDescendant(new Key(e));
-}
-/**
- * Returns the descendant delta for the given key, or <code>null</code>,
- * if no delta for the given key is found in the delta tree below this delta.
- */
-protected JavaElementDelta findDescendant(Key key) {
-	if (this.affectedChildren.length == 0)
-		return null;
-	Integer index = getChildIndex(key);
-	if (index != null)
-		return (JavaElementDelta) this.affectedChildren[index];
-	for (IJavaElementDelta child : this.affectedChildren) {
-		JavaElementDelta delta = ((JavaElementDelta) child).findDescendant(key);
-		if (delta != null)
-			return delta;
-	}
-	return null;
+	return (JavaElementDelta) hDeltaFor((IElement) e);
 }
 /**
  * Mark this delta as a fine-grained delta.
@@ -373,35 +159,13 @@ public void fineGrained() {
  * @see IJavaElementDelta
  */
 public IJavaElementDelta[] getAddedChildren() {
-	return getChildrenOfType(ADDED);
+	return toJavaElementDeltas(hAddedChildren());
 }
 /**
  * @see IJavaElementDelta
  */
 public IJavaElementDelta[] getAffectedChildren() {
-	return this.affectedChildren;
-}
-/**
- * Returns a collection of all the parents of this element up to (but
- * not including) the root of this tree in bottom-up order. If the given
- * element is not a descendant of the root of this tree, <code>null</code>
- * is returned.
- */
-private ArrayList getAncestors(IJavaElement element) {
-	IJavaElement parent = element.getParent();
-	if (parent == null) {
-		return null;
-	}
-	ArrayList parents = new ArrayList();
-	while (!parent.equals(this.changedElement)) {
-		parents.add(parent);
-		parent = parent.getParent();
-		if (parent == null) {
-			return null;
-		}
-	}
-	parents.trimToSize();
-	return parents;
+	return toJavaElementDeltas(hAffectedChildren());
 }
 public CompilationUnit getCompilationUnitAST() {
 	return this.ast;
@@ -413,111 +177,263 @@ public IJavaElementDelta[] getAnnotationDeltas() {
  * @see IJavaElementDelta
  */
 public IJavaElementDelta[] getChangedChildren() {
-	return getChildrenOfType(CHANGED);
+	return toJavaElementDeltas(hChangedChildren());
 }
-/**
- * Returns the index of the delta in the collection of affected children,
- * or <code>null</code> if the child delta for the given key is not found.
- */
-protected Integer getChildIndex(Key key) {
-	int length = this.affectedChildren.length;
-	if (length < NEED_CHILD_INDEX) {
-		for (int i = 0; i < length; i++) {
-			if (equalsAndSameParent(key.element, this.affectedChildren[i].getElement())) {
-				return i;
-			}
-		}
-		return null;
-	}
-	if (this.childIndex == null) {
-		this.childIndex = new HashMap<Key, Integer>();
-		for (int i = 0; i < length; i++) {
-			this.childIndex.put(new Key(this.affectedChildren[i].getElement()), i);
-		}
-	}
-	return this.childIndex.get(key);
-}
-/**
- * @see IJavaElementDelta
- */
-protected IJavaElementDelta[] getChildrenOfType(int type) {
-	int length = this.affectedChildren.length;
-	if (length == 0) {
-		return new IJavaElementDelta[] {};
-	}
-	ArrayList children= new ArrayList(length);
-	for (int i = 0; i < length; i++) {
-		if (this.affectedChildren[i].getKind() == type) {
-			children.add(this.affectedChildren[i]);
-		}
-	}
 
-	IJavaElementDelta[] childrenOfType = new IJavaElementDelta[children.size()];
-	children.toArray(childrenOfType);
-
-	return childrenOfType;
-}
-/**
- * Returns the delta for a given element.  Only looks below this
- * delta.
- */
-protected JavaElementDelta getDeltaFor(IJavaElement element) {
-	return find(element);
-}
 /**
  * @see IJavaElementDelta
  */
 public IJavaElement getElement() {
-	return this.changedElement;
+	return (IJavaElement) hElement();
+}
+/**
+ * @see IJavaElementDelta
+ */
+public int getFlags() {
+    return (int) (hFlags() >> 32);
+}
+/**
+ * @see IJavaElementDelta
+ */
+public int getKind() {
+	int kind = hKind();
+	if (kind == IElementDeltaConstants.ADDED)
+		return ADDED;
+	else if (kind == IElementDeltaConstants.REMOVED)
+		return REMOVED;
+	else if (kind == IElementDeltaConstants.CHANGED)
+		return CHANGED;
+	return 0;
 }
 /**
  * @see IJavaElementDelta
  */
 public IJavaElement getMovedFromElement() {
-	return this.movedFromHandle;
+	return (IJavaElement) hMovedFromElement();
 }
 /**
  * @see IJavaElementDelta
  */
 public IJavaElement getMovedToElement() {
-	return this.movedToHandle;
+	return (IJavaElement) hMovedToElement();
 }
 /**
  * @see IJavaElementDelta
  */
 public IJavaElementDelta[] getRemovedChildren() {
-	return getChildrenOfType(REMOVED);
+	return toJavaElementDeltas(hRemovedChildren());
 }
 /**
  * Return the collection of resource deltas. Return null if none.
  */
 public IResourceDelta[] getResourceDeltas() {
-	if (this.resourceDeltas == null) return null;
-	if (this.resourceDeltas.length != this.resourceDeltasCounter) {
-		System.arraycopy(this.resourceDeltas, 0, this.resourceDeltas = new IResourceDelta[this.resourceDeltasCounter], 0, this.resourceDeltasCounter);
+	return hResourceDeltas();
+}
+@Override
+protected ElementDelta hNewDelta(IElement element) {
+	return new JavaElementDelta((IJavaElement) element);
+}
+@Override
+protected void hSetFlags(long flags) {
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_CONTENT, F_CONTENT);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_CHILDREN, F_CHILDREN);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_FINE_GRAINED, F_FINE_GRAINED);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_MOVED_FROM, F_MOVED_FROM);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_MOVED_TO, F_MOVED_TO);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_REORDER, F_REORDER);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_UNDERLYING_RESOURCE, F_PRIMARY_RESOURCE);
+	flags = normalizeFlags(flags, IElementDeltaConstants.F_WORKING_COPY, F_PRIMARY_WORKING_COPY);
+	if ((flags & IElementDeltaConstants.F_OPEN) != 0)
+		flags |= shl32(getElement().getResource().isAccessible() ? F_OPENED : F_CLOSED);
+	else
+		flags &= ~shl32(F_OPENED | F_CLOSED);
+	super.hSetFlags(flags);
+}
+private static long normalizeFlags(long flags, long genericFlags, int javaFlags) {
+	return (flags & genericFlags) != 0 ? (flags | shl32(javaFlags)) : (flags & ~shl32(javaFlags));
+}
+private static long shl32(int x) {
+	return ((long) x) << 32;
+}
+@Override
+public String hToString(IContext context) {
+	StringBuilder builder = new StringBuilder();
+	builder.append(super.hToString(context));
+	// process annotation deltas
+	FormatStyle style = context.getOrDefault(FORMAT_STYLE);
+	if (style == FULL || style == LONG) {
+		IJavaElementDelta[] annotations = getAnnotationDeltas();
+		Util.Comparer comparer = context.getOrDefault(COMPARER);
+		if (comparer != null) {
+			annotations = annotations.clone();
+			Util.sort(annotations, comparer);
+		}
+		IndentPolicy indentPolicy = context.getOrDefault(INDENT_POLICY);
+		int indentLevel = context.getOrDefault(INDENT_LEVEL);
+		for (int i = 0; i < annotations.length; ++i) {
+			indentPolicy.appendLine(builder);
+			builder.append(((JavaElementDelta) annotations[i]).hToString(
+					with(of(INDENT_LEVEL, indentLevel + 1), context)));
+		}
 	}
-	return this.resourceDeltas;
+	return builder.toString();
 }
-/**
- * Adds the new element to a new array that contains all of the elements of the old array.
- * Returns the new array.
- */
-protected IJavaElementDelta[] growAndAddToArray(IJavaElementDelta[] array, IJavaElementDelta addition) {
-	IJavaElementDelta[] old = array;
-	array = new IJavaElementDelta[old.length + 1];
-	System.arraycopy(old, 0, array, 0, old.length);
-	array[old.length] = addition;
-	return array;
+@Override
+public void hToStringChildren(StringBuilder builder, IContext context) {
+	IndentPolicy indentPolicy = context.getOrDefault(INDENT_POLICY);
+	ElementDelta[] affectedChildren = hAffectedChildren();
+	Util.Comparer comparer = context.getOrDefault(COMPARER);
+	if (comparer != null) {
+		affectedChildren = affectedChildren.clone();
+		Util.sort(affectedChildren, comparer);
+	}
+	for (int i = 0; i < affectedChildren.length; i++)
+	{
+		if (i > 0)
+			indentPolicy.appendLine(builder);
+		builder.append(affectedChildren[i].hToString(context));
+	}
 }
-/**
- * Creates the delta tree for the given element and delta, and then
- * inserts the tree as an affected child of this node.
- */
+@Override
+protected boolean hToStringFlags(StringBuilder builder, IContext context) {
+	boolean prev = false;
+	int flags = getFlags();
+	if ((flags & F_CHILDREN) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("CHILDREN"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_CONTENT) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("CONTENT"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_MOVED_FROM) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("MOVED_FROM(" + ((JavaElement)getMovedFromElement()).toStringWithAncestors() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+		prev = true;
+	}
+	if ((flags & F_MOVED_TO) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("MOVED_TO(" + ((JavaElement)getMovedToElement()).toStringWithAncestors() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+		prev = true;
+	}
+	if ((flags & F_ADDED_TO_CLASSPATH) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("ADDED TO CLASSPATH"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_REMOVED_FROM_CLASSPATH) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("REMOVED FROM CLASSPATH"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_REORDER) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("REORDERED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_ARCHIVE_CONTENT_CHANGED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("ARCHIVE CONTENT CHANGED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_SOURCEATTACHED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("SOURCE ATTACHED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_SOURCEDETACHED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("SOURCE DETACHED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_FINE_GRAINED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("FINE GRAINED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_PRIMARY_WORKING_COPY) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("PRIMARY WORKING COPY"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_CLASSPATH_CHANGED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("RAW CLASSPATH CHANGED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_RESOLVED_CLASSPATH_CHANGED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("RESOLVED CLASSPATH CHANGED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_PRIMARY_RESOURCE) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("PRIMARY RESOURCE"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_OPENED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("OPENED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_CLOSED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("CLOSED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_AST_AFFECTED) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("AST AFFECTED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_CATEGORIES) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("CATEGORIES"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_ANNOTATIONS) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("ANNOTATIONS"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_MODIFIERS) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("MODIFIERS CHANGED"); //$NON-NLS-1$
+		prev = true;
+	}
+	if ((flags & F_SUPER_TYPES) != 0) {
+		if (prev)
+			builder.append(" | "); //$NON-NLS-1$
+		builder.append("SUPER TYPES CHANGED"); //$NON-NLS-1$
+		prev = true;
+	}
+	return prev;
+}
 protected void insertDeltaTree(IJavaElement element, JavaElementDelta delta) {
-	JavaElementDelta childDelta= createDeltaTree(element, delta);
-	if (!equalsAndSameParent(element, getElement())) { // handle case of two jars that can be equals but not in the same project
-		addAffectedChild(childDelta);
-	}
+	hInsert(delta);
 }
 /**
  * Creates the nested deltas resulting from an move operation.
@@ -527,9 +443,9 @@ protected void insertDeltaTree(IJavaElement element, JavaElementDelta delta) {
  */
 public void movedFrom(IJavaElement movedFromElement, IJavaElement movedToElement) {
 	JavaElementDelta removedDelta = new JavaElementDelta(movedFromElement);
-	removedDelta.kind = REMOVED;
-	removedDelta.changeFlags |= F_MOVED_TO;
-	removedDelta.movedToHandle = movedToElement;
+	removedDelta.hSetKind(IElementDeltaConstants.REMOVED);
+	removedDelta.hSetFlags(IElementDeltaConstants.F_MOVED_TO);
+	removedDelta.hSetMovedToElement((IElement) movedToElement);
 	insertDeltaTree(movedFromElement, removedDelta);
 }
 /**
@@ -540,9 +456,9 @@ public void movedFrom(IJavaElement movedFromElement, IJavaElement movedToElement
  */
 public void movedTo(IJavaElement movedToElement, IJavaElement movedFromElement) {
 	JavaElementDelta addedDelta = new JavaElementDelta(movedToElement);
-	addedDelta.kind = ADDED;
-	addedDelta.changeFlags |= F_MOVED_FROM;
-	addedDelta.movedFromHandle = movedFromElement;
+	addedDelta.hSetKind(IElementDeltaConstants.ADDED);
+	addedDelta.hSetFlags(IElementDeltaConstants.F_MOVED_FROM);
+	addedDelta.hSetMovedFromElement((IElement) movedFromElement);
 	insertDeltaTree(movedToElement, addedDelta);
 }
 /**
@@ -553,30 +469,9 @@ public void opened(IJavaElement element) {
 	delta.changed(F_OPENED);
 	insertDeltaTree(element, delta);
 }
-/**
- * Removes the child delta from the collection of affected children.
- */
-protected void removeAffectedChild(JavaElementDelta child) {
-	if (this.affectedChildren.length == 0)
-		return;
-	Key childKey = new Key(child.getElement());
-	Integer exisingChildIndex = getChildIndex(childKey);
-	if (exisingChildIndex != null) {
-		removeExistingChild(childKey, exisingChildIndex);
-	}
-}
-/**
- * Removes the element from the array.
- * Returns the a new array which has shrunk.
- */
-protected IJavaElementDelta[] removeAndShrinkArray(IJavaElementDelta[] old, int index) {
-	IJavaElementDelta[] array = new IJavaElementDelta[old.length - 1];
-	if (index > 0)
-		System.arraycopy(old, 0, array, 0, index);
-	int rest = old.length - index - 1;
-	if (rest > 0)
-		System.arraycopy(old, index + 1, array, index, rest);
-	return array;
+public void removed() {
+	hSetKind(IElementDeltaConstants.REMOVED);
+	hSetFlags(0);
 }
 /**
  * Creates the nested deltas resulting from an delete operation.
@@ -590,28 +485,11 @@ public void removed(IJavaElement element) {
 public void removed(IJavaElement element, int flags) {
 	JavaElementDelta removedDelta= new JavaElementDelta(element);
 	insertDeltaTree(element, removedDelta);
-	JavaElementDelta actualDelta = getDeltaFor(element);
+	JavaElementDelta actualDelta = find(element);
 	if (actualDelta != null) {
 		actualDelta.removed();
-		actualDelta.changeFlags |= flags;
+		actualDelta.hSetFlags(actualDelta.hFlags() | Flags.translate(flags));
 		actualDelta.clearAffectedChildren();
-	}
-}
-/**
- * Removes the existing child delta from the collection of affected children.
- */
-protected void removeExistingChild(Key key, int index) {
-	this.affectedChildren = removeAndShrinkArray(this.affectedChildren, index);
-	if (this.childIndex != null) {
-		int length = this.affectedChildren.length;
-		if (length < NEED_CHILD_INDEX)
-			this.childIndex = null;
-		else {
-			this.childIndex.remove(key);
-			for (int i = index; i < length; i++) {
-				this.childIndex.put(new Key(this.affectedChildren[i].getElement()), i);
-			}
-		}
 	}
 }
 /**
@@ -636,189 +514,40 @@ public void sourceDetached(IJavaElement element) {
 	detachedDelta.changed(F_SOURCEDETACHED);
 	insertDeltaTree(element, detachedDelta);
 }
-/**
- * Returns a string representation of this delta's
- * structure suitable for debug purposes.
- *
- * @see #toString()
- */
-public String toDebugString(int depth) {
-	StringBuffer buffer = new StringBuffer();
-	for (int i= 0; i < depth; i++) {
-		buffer.append('\t');
-	}
-	buffer.append(((JavaElement)getElement()).toDebugString());
-	toDebugString(buffer);
-	IJavaElementDelta[] children = getAffectedChildren();
-	if (children != null) {
-		for (int i = 0; i < children.length; ++i) {
-			buffer.append("\n"); //$NON-NLS-1$
-			buffer.append(((JavaElementDelta) children[i]).toDebugString(depth + 1));
-		}
-	}
-	for (int i = 0; i < this.resourceDeltasCounter; i++) {
-		buffer.append("\n");//$NON-NLS-1$
-		for (int j = 0; j < depth+1; j++) {
-			buffer.append('\t');
-		}
-		IResourceDelta resourceDelta = this.resourceDeltas[i];
-		buffer.append(resourceDelta.toString());
-		buffer.append("["); //$NON-NLS-1$
-		switch (resourceDelta.getKind()) {
-			case IResourceDelta.ADDED :
-				buffer.append('+');
-				break;
-			case IResourceDelta.REMOVED :
-				buffer.append('-');
-				break;
-			case IResourceDelta.CHANGED :
-				buffer.append('*');
-				break;
-			default :
-				buffer.append('?');
-				break;
-		}
-		buffer.append("]"); //$NON-NLS-1$
-	}
-	IJavaElementDelta[] annotations = getAnnotationDeltas();
-	if (annotations != null) {
-		for (int i = 0; i < annotations.length; ++i) {
-			buffer.append("\n"); //$NON-NLS-1$
-			buffer.append(((JavaElementDelta) annotations[i]).toDebugString(depth + 1));
-		}
-	}
-	return buffer.toString();
-}
-protected boolean toDebugString(StringBuffer buffer, int flags) {
-	boolean prev = super.toDebugString(buffer, flags);
-
-	if ((flags & IJavaElementDelta.F_CHILDREN) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("CHILDREN"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_CONTENT) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("CONTENT"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_MOVED_FROM) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("MOVED_FROM(" + ((JavaElement)getMovedFromElement()).toStringWithAncestors() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_MOVED_TO) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("MOVED_TO(" + ((JavaElement)getMovedToElement()).toStringWithAncestors() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_ADDED_TO_CLASSPATH) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("ADDED TO CLASSPATH"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_REMOVED_FROM_CLASSPATH) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("REMOVED FROM CLASSPATH"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_REORDER) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("REORDERED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_ARCHIVE_CONTENT_CHANGED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("ARCHIVE CONTENT CHANGED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_SOURCEATTACHED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("SOURCE ATTACHED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_SOURCEDETACHED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("SOURCE DETACHED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_FINE_GRAINED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("FINE GRAINED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_PRIMARY_WORKING_COPY) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("PRIMARY WORKING COPY"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_CLASSPATH_CHANGED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("RAW CLASSPATH CHANGED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_RESOLVED_CLASSPATH_CHANGED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("RESOLVED CLASSPATH CHANGED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_PRIMARY_RESOURCE) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("PRIMARY RESOURCE"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_OPENED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("OPENED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_CLOSED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("CLOSED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_AST_AFFECTED) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("AST AFFECTED"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_CATEGORIES) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("CATEGORIES"); //$NON-NLS-1$
-		prev = true;
-	}
-	if ((flags & IJavaElementDelta.F_ANNOTATIONS) != 0) {
-		if (prev)
-			buffer.append(" | "); //$NON-NLS-1$
-		buffer.append("ANNOTATIONS"); //$NON-NLS-1$
-		prev = true;
-	}
-	return prev;
-}
-/**
- * Returns a string representation of this delta's
- * structure suitable for debug purposes.
- */
 public String toString() {
-	return toDebugString(0);
+	return hToString(of(INDENT_POLICY, DELTA_INDENT_POLICY));
+}
+private static JavaElementDelta[] toJavaElementDeltas(ElementDelta[] array)
+{
+	JavaElementDelta[] result = new JavaElementDelta[array.length];
+	System.arraycopy(array, 0, result, 0, array.length);
+	return result;
+}
+public static class Flags {
+	public static long translate(int javaFlags) {
+		int genericFlags = 0;
+		if ((javaFlags & F_CONTENT) != 0)
+			genericFlags |= IElementDeltaConstants.F_CONTENT;
+		if ((javaFlags & F_CHILDREN) != 0)
+			genericFlags |= IElementDeltaConstants.F_CHILDREN;
+		if ((javaFlags & F_FINE_GRAINED) != 0)
+			genericFlags |= IElementDeltaConstants.F_FINE_GRAINED;
+		if ((javaFlags & F_MOVED_FROM) != 0)
+			genericFlags |= IElementDeltaConstants.F_MOVED_FROM;
+		if ((javaFlags & F_MOVED_TO) != 0)
+			genericFlags |= IElementDeltaConstants.F_MOVED_TO;
+		if ((javaFlags & (F_OPENED | F_CLOSED)) != 0)
+			genericFlags |= IElementDeltaConstants.F_OPEN;
+		if ((javaFlags & F_REORDER) != 0)
+			genericFlags |= IElementDeltaConstants.F_REORDER;
+		if ((javaFlags & F_PRIMARY_RESOURCE) != 0)
+			genericFlags |= IElementDeltaConstants.F_UNDERLYING_RESOURCE;
+		if ((javaFlags & F_PRIMARY_WORKING_COPY) != 0)
+			genericFlags |= IElementDeltaConstants.F_WORKING_COPY;
+		return ((long) javaFlags) << 32 | genericFlags;
+	}
+	private Flags() {
+	}
 }
 }
+

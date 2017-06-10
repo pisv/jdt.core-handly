@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -16,8 +16,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.eclipse.core.runtime.Assert;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.OperationCanceledException;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.search.SearchEngine;
@@ -52,14 +55,6 @@ public class BinaryType extends BinaryMember implements IType, SuffixConstants {
 protected BinaryType(JavaElement parent, String name) {
 	super(parent, name);
 }
-/*
- * Remove my cached children from the Java Model
- */
-protected void closing(Object info) throws JavaModelException {
-	ClassFileInfo cfi = getClassFileInfo();
-	cfi.removeBinaryChildren();
-}
-
 /**
  * @see IType#codeComplete(char[], int, int, char[][], char[][], int[], boolean, ICompletionRequestor)
  * @deprecated
@@ -166,10 +161,6 @@ public IMethod createMethod(String contents, IJavaElement sibling, boolean force
 public IType createType(String contents, IJavaElement sibling, boolean force, IProgressMonitor monitor) throws JavaModelException {
 	throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.READ_ONLY, this));
 }
-public boolean equals(Object o) {
-	if (!(o instanceof BinaryType)) return false;
-	return super.equals(o);
-}
 /*
  * @see IType#findMethods(IMethod)
  */
@@ -185,13 +176,6 @@ public IAnnotation[] getAnnotations() throws JavaModelException {
 	IBinaryType info = (IBinaryType) getElementInfo();
 	IBinaryAnnotation[] binaryAnnotations = info.getAnnotations();
 	return getAnnotations(binaryAnnotations, info.getTagBits());
-}
-/*
- * @see IParent#getChildren()
- */
-public IJavaElement[] getChildren() throws JavaModelException {
-	ClassFileInfo cfi = getClassFileInfo();
-	return cfi.binaryChildren;
 }
 public IJavaElement[] getChildrenForCategory(String category) throws JavaModelException {
 	IJavaElement[] children = getChildren();
@@ -279,12 +263,6 @@ public IType getDeclaringType() {
 					Util.localTypeName(enclosingName, enclosingName.lastIndexOf('$'), enclosingName.length()));
 		}
 	}
-}
-public Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
-	Object info = manager.getInfo(this);
-	if (info != null && info != JavaModelCache.NON_EXISTING_JAR_TYPE_INFO) return info;
-	return openWhenClosed(createElementInfo(), false, monitor);
 }
 /*
  * @see IJavaElement
@@ -692,6 +670,65 @@ public IType[] getTypes() throws JavaModelException {
 		return array;
 	}
 }
+@Override
+public Object hBody(IContext context, IProgressMonitor monitor) throws CoreException {
+	Object body = hFindBody();
+	if (body != null && body != JavaModelCache.NON_EXISTING_JAR_TYPE_INFO) return body;
+	return hOpen(context, monitor);
+}
+@Override
+public boolean hCanEqual(Object obj) {
+	return obj instanceof BinaryType;
+}
+@Override
+public IElement[] hChildren() throws CoreException {
+	ClassFileInfo cfi = getClassFileInfo();
+	return cfi.binaryChildren;
+}
+/*
+ * Remove my cached children from the Java Model
+ */
+@Override
+public void hRemoving(Object body) {
+	try {
+		ClassFileInfo cfi = getClassFileInfo();
+		cfi.removeBinaryChildren();
+	} catch (JavaModelException e) {
+		// fall through
+	}
+	super.hRemoving(body);
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		hToStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		hToStringName(builder, context);
+	} else {
+		try {
+			if (isAnnotation()) {
+				builder.append("@interface "); //$NON-NLS-1$
+			} else if (isEnum()) {
+				builder.append("enum "); //$NON-NLS-1$
+			} else if (isInterface()) {
+				builder.append("interface "); //$NON-NLS-1$
+			} else {
+				builder.append("class "); //$NON-NLS-1$
+			}
+			hToStringName(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	if (getElementName().length() > 0)
+		super.hToStringName(builder, context);
+	else
+		builder.append("<anonymous>"); //$NON-NLS-1$
+}
 
 /*
  * @see IType#isAnonymous()
@@ -821,7 +858,7 @@ public ITypeHierarchy newSupertypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), false);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -839,7 +876,7 @@ public ITypeHierarchy newTypeHierarchy(IJavaProject project, WorkingCopyOwner ow
 	if (project == null) {
 		throw new IllegalArgumentException(Messages.hierarchy_nullProject);
 	}
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	ICompilationUnit[] projectWCs = null;
 	if (workingCopies != null) {
 		int length = workingCopies.length;
@@ -915,7 +952,7 @@ public ITypeHierarchy newTypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = JavaModelManager.getJavaModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), true);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -960,46 +997,13 @@ public String sourceFileName(IBinaryType info) {
 		return new String(sourceFileName, index + 1, sourceFileName.length - index - 1);
 	}
 }
-/*
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		toStringName(buffer);
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		toStringName(buffer);
-	} else {
-		try {
-			if (isAnnotation()) {
-				buffer.append("@interface "); //$NON-NLS-1$
-			} else if (isEnum()) {
-				buffer.append("enum "); //$NON-NLS-1$
-			} else if (isInterface()) {
-				buffer.append("interface "); //$NON-NLS-1$
-			} else {
-				buffer.append("class "); //$NON-NLS-1$
-			}
-			toStringName(buffer);
-		} catch (JavaModelException e) {
-			buffer.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
-}
-protected void toStringName(StringBuffer buffer) {
-	if (getElementName().length() > 0)
-		super.toStringName(buffer);
-	else
-		buffer.append("<anonymous>"); //$NON-NLS-1$
-}
 public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
 	JavadocContents javadocContents = getJavadocContents(monitor);
 	if (javadocContents == null) return null;
 	return javadocContents.getTypeDoc();
 }
 public JavadocContents getJavadocContents(IProgressMonitor monitor) throws JavaModelException {
-	PerProjectInfo projectInfo = JavaModelManager.getJavaModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+	PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
 	JavadocContents cachedJavadoc = null;
 	synchronized (projectInfo.javadocCache) {
 		cachedJavadoc = (JavadocContents) projectInfo.javadocCache.get(this);

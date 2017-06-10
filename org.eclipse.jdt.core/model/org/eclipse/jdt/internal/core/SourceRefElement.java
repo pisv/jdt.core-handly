@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2008 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,11 +10,16 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
-import java.util.HashMap;
-
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.model.ISourceConstruct;
+import org.eclipse.handly.model.ISourceElementInfo;
+import org.eclipse.handly.model.impl.ISourceConstructImplSupport;
+import org.eclipse.handly.snapshot.ISnapshot;
+import org.eclipse.handly.util.Property;
+import org.eclipse.handly.util.TextRange;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.CompilationUnit;
@@ -25,7 +30,7 @@ import org.eclipse.jdt.internal.core.util.Messages;
 /**
  * Abstract class for Java elements which implement ISourceReference.
  */
-public abstract class SourceRefElement extends JavaElement implements ISourceReference {
+public abstract class SourceRefElement extends JavaElement implements ISourceReference, ISourceConstructImplSupport {
 	/*
 	 * A count to uniquely identify this element in the case
 	 * that a duplicate named element exists. For example, if
@@ -38,18 +43,6 @@ public abstract class SourceRefElement extends JavaElement implements ISourceRef
 
 protected SourceRefElement(JavaElement parent) {
 	super(parent);
-}
-/**
- * This element is being closed.  Do any necessary cleanup.
- */
-protected void closing(Object info) throws JavaModelException {
-	// Do any necessary cleanup
-}
-/**
- * Returns a new element info for this element.
- */
-protected Object createElementInfo() {
-	return null; // not used for source ref elements
 }
 /**
  * @see ISourceManipulation
@@ -77,11 +70,6 @@ public void delete(boolean force, IProgressMonitor monitor) throws JavaModelExce
 	IJavaElement[] elements = new IJavaElement[] {this};
 	getJavaModel().delete(elements, force, monitor);
 }
-public boolean equals(Object o) {
-	if (!(o instanceof SourceRefElement)) return false;
-	return this.occurrenceCount == ((SourceRefElement)o).occurrenceCount &&
-			super.equals(o);
-}
 /**
  * Returns the <code>ASTNode</code> that corresponds to this <code>JavaElement</code>
  * or <code>null</code> if there is no corresponding node.
@@ -93,18 +81,6 @@ public ASTNode findNode(CompilationUnit ast) {
 	} catch (JavaModelException e) {
 		// receiver doesn't exist
 		return null;
-	}
-}
-/*
- * @see JavaElement#generateInfos
- */
-protected void generateInfos(Object info, HashMap newElements, IProgressMonitor pm) throws JavaModelException {
-	Openable openableParent = (Openable)getOpenableParent();
-	if (openableParent == null) return;
-
-	JavaElementInfo openableParentInfo = (JavaElementInfo) JavaModelManager.getJavaModelManager().getInfo(openableParent);
-	if (openableParentInfo == null) {
-		openableParent.generateInfos(openableParent.createElementInfo(), newElements, pm);
 	}
 }
 public IAnnotation getAnnotation(String name) {
@@ -161,34 +137,14 @@ public IJavaElement getHandleUpdatingCountFromMemento(MementoTokenizer memento, 
 /*
  * @see IMember#getOccurrenceCount()
  */
-public int getOccurrenceCount() {
-	return this.occurrenceCount;
-}
-/**
- * Return the first instance of IOpenable in the hierarchy of this
- * type (going up the hierarchy from this type);
- */
-public IOpenable getOpenableParent() {
-	IJavaElement current = getParent();
-	while (current != null){
-		if (current instanceof IOpenable){
-			return (IOpenable) current;
-		}
-		current = current.getParent();
-	}
-	return null;
+public final int getOccurrenceCount() {
+	return hOccurrenceCount();
 }
 /*
  * @see IJavaElement
  */
 public IPath getPath() {
 	return getParent().getPath();
-}
-/*
- * @see IJavaElement
- */
-public IResource resource() {
-	return this.parent.resource();
 }
 /**
  * @see ISourceReference
@@ -231,6 +187,49 @@ public IResource getUnderlyingResource() throws JavaModelException {
 public boolean hasChildren() throws JavaModelException {
 	return getChildren().length > 0;
 }
+@Override
+public void hIncrementOccurrenceCount() {
+	this.occurrenceCount++;
+}
+@Override
+public int hOccurrenceCount() {
+	return this.occurrenceCount;
+}
+@Override
+public ISourceElementInfo hSourceElementInfo() throws CoreException {
+	IJavaElement[] children = getChildren();
+	ISourceRange sourceRange = getSourceRange();
+	ISourceRange nameRange = getNameRange();
+	return new ISourceElementInfo() {
+		
+		@Override
+		public ISnapshot getSnapshot() {
+			return null;
+		}
+		@Override
+		public TextRange getIdentifyingRange() {
+			if (nameRange != null && SourceRange.isAvailable(nameRange))
+				return new TextRange(nameRange.getOffset(), nameRange.getLength());
+			return null;
+		}
+		@Override
+		public TextRange getFullRange() {
+			if (sourceRange != null && SourceRange.isAvailable(sourceRange))
+				return new TextRange(sourceRange.getOffset(), sourceRange.getLength());
+			return null;
+		}
+		@Override
+		public ISourceConstruct[] getChildren() {
+			ISourceConstruct[] result = new ISourceConstruct[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		@Override
+		public <T> T get(Property<T> property) {
+			return null;
+		}
+	};
+}
 /**
  * @see IJavaElement
  */
@@ -269,11 +268,10 @@ public void rename(String newName, boolean force, IProgressMonitor monitor) thro
 	String[] renamings= new String[] {newName};
 	getJavaModel().rename(elements, dests, renamings, force, monitor);
 }
-protected void toStringName(StringBuffer buffer) {
-	super.toStringName(buffer);
-	if (this.occurrenceCount > 1) {
-		buffer.append("#"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-	}
+/*
+ * @see IJavaElement
+ */
+public IResource resource() {
+	return this.parent.resource();
 }
 }

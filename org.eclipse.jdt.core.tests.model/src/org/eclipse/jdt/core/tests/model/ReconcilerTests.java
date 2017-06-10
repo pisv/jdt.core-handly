@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,6 +12,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.core.tests.model;
 
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
 
 import java.io.File;
 import java.io.IOException;
@@ -2431,7 +2432,7 @@ public void testMethodWithError07() throws CoreException {
 		this.workingCopy = getCompilationUnit("Reconciler/src/p1/Y.java").getWorkingCopy(this.wcOwner, null);
 
 		// Close working copy
-		JavaModelManager.getJavaModelManager().removeInfoAndChildren((CompilationUnit)this.workingCopy); // use a back door as working copies cannot be closed
+		((CompilationUnit)this.workingCopy).hRemove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
 
 		// Reopen should detect syntax error
 		this.problemRequestor.initialize(contents.toCharArray());
@@ -2479,7 +2480,7 @@ public void testMethodWithError08() throws CoreException {
 		this.workingCopy = getCompilationUnit("Reconciler/src/p2/X01.java").getWorkingCopy(this.wcOwner, null);
 
 		// Close working copy
-		JavaModelManager.getJavaModelManager().removeInfoAndChildren((CompilationUnit)this.workingCopy); // use a back door as working copies cannot be closed
+		((CompilationUnit)this.workingCopy).hRemove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
 
 		// Reopen should detect syntax error
 		this.problemRequestor.initialize(contents.toCharArray());

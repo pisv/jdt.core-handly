@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,6 +9,9 @@
  *     IBM Corporation - initial API and implementation
  *******************************************************************************/
 package org.eclipse.jdt.core.tests.model;
+
+import static org.eclipse.handly.context.Contexts.*;
+import static org.eclipse.handly.util.ToStringOptions.*;
 
 import java.io.*;
 import java.net.URL;
@@ -32,6 +35,7 @@ import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.core.ClasspathEntry;
 import org.eclipse.jdt.internal.core.JavaCorePreferenceInitializer;
 import org.eclipse.jdt.internal.core.JavaElement;
+import org.eclipse.jdt.internal.core.JavaElementDelta;
 import org.eclipse.jdt.internal.core.JavaModelManager;
 import org.eclipse.jdt.internal.core.JavaProject;
 import org.eclipse.jdt.internal.core.NameLookup;
@@ -191,29 +195,6 @@ public abstract class AbstractJavaModelTests extends SuiteOfTestCases {
 			this.stackTraces = new ByteArrayOutputStream();
 			this.gotResourceDelta = false;
 		}
-		protected void sortDeltas(IJavaElementDelta[] elementDeltas) {
-        	org.eclipse.jdt.internal.core.util.Util.Comparer comparer = new org.eclipse.jdt.internal.core.util.Util.Comparer() {
-        		public int compare(Object a, Object b) {
-        			IJavaElementDelta deltaA = (IJavaElementDelta)a;
-        			IJavaElementDelta deltaB = (IJavaElementDelta)b;
-        			return toString(deltaA).compareTo(toString(deltaB));
-        		}
-        		private String toString(IJavaElementDelta delta) {
-        			if (delta.getElement().getElementType() == IJavaElement.PACKAGE_FRAGMENT_ROOT) {
-        				return delta.getElement().getPath().setDevice(null).toString();
-        			}
-        			return delta.toString();
-        		}
-        	};
-        	org.eclipse.jdt.internal.core.util.Util.sort(elementDeltas, comparer);
-        	for (int i = 0, max = elementDeltas.length; i < max; i++) {
-        		IJavaElementDelta delta = elementDeltas[i];
-        		IJavaElementDelta[] children = delta.getAffectedChildren();
-        		if (children != null) {
-        			sortDeltas(children);
-        		}
-        	}
-        }
 		public void resourceChanged(IResourceChangeEvent event) {
 			this.gotResourceDelta = true;
 		}
@@ -239,38 +220,45 @@ public abstract class AbstractJavaModelTests extends SuiteOfTestCases {
 			return this.stackTraces.toString();
 		}
 		public synchronized String toString() {
-			StringBuffer buffer = new StringBuffer();
+			StringBuilder builder = new StringBuilder();
 			for (int i=0, length= this.deltas.length; i<length; i++) {
 				IJavaElementDelta delta = this.deltas[i];
-				IJavaElementDelta[] children = delta.getAffectedChildren();
-				int childrenLength=children.length;
+				int childrenLength=delta.getAffectedChildren().length;
 				IResourceDelta[] resourceDeltas = delta.getResourceDeltas();
 				int resourceDeltasLength = resourceDeltas == null ? 0 : resourceDeltas.length;
 				if (childrenLength == 0 && resourceDeltasLength == 0) {
-					buffer.append(delta);
+					builder.append(delta);
 				} else {
-					sortDeltas(children);
-					for (int j=0; j<childrenLength; j++) {
-						buffer.append(children[j]);
-						if (j != childrenLength-1) {
-							buffer.append("\n");
+					Util.Comparer comparer = new Util.Comparer() {
+						public int compare(Object a, Object b) {
+							IJavaElementDelta deltaA = (IJavaElementDelta)a;
+							IJavaElementDelta deltaB = (IJavaElementDelta)b;
+							return toString(deltaA).compareTo(toString(deltaB));
 						}
-					}
+						private String toString(IJavaElementDelta d) {
+							if (d.getElement().getElementType() == IJavaElement.PACKAGE_FRAGMENT_ROOT) {
+								return d.getElement().getPath().setDevice(null).toString();
+							}
+							return d.toString();
+						}
+					};
+					((JavaElementDelta) delta).hToStringChildren(builder, with(of(JavaElementDelta.COMPARER, comparer),
+							of(INDENT_POLICY, JavaElementDelta.DELTA_INDENT_POLICY)));
 					for (int j=0; j<resourceDeltasLength; j++) {
-						if (j == 0 && buffer.length() != 0) {
-							buffer.append("\n");
+						if (j == 0 && builder.length() != 0) {
+							builder.append("\n");
 						}
-						buffer.append(resourceDeltas[j]);
+						builder.append(resourceDeltas[j]);
 						if (j != resourceDeltasLength-1) {
-							buffer.append("\n");
+							builder.append("\n");
 						}
 					}
 				}
 				if (i != length-1) {
-					buffer.append("\n\n");
+					builder.append("\n\n");
 				}
 			}
-			return buffer.toString();
+			return builder.toString();
 		}
 		public void waitForResourceDelta() {
 			long start = System.currentTimeMillis();

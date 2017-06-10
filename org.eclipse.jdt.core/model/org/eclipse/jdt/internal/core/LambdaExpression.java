@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014, 2015 IBM Corporation and others.
+ * Copyright (c) 2014, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,7 +12,9 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
-import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.ILocalVariable;
 import org.eclipse.jdt.core.IMethod;
@@ -137,10 +139,6 @@ public class LambdaExpression extends SourceType {
 		return elementInfo;
 	}
 	
-	protected void closing(Object info) throws JavaModelException {
-		// nothing to do, not backed by model ATM.
-	}
-	
 	public boolean equals(Object o) {
 		if (this == o)
 			return true;
@@ -163,8 +161,27 @@ public class LambdaExpression extends SourceType {
 		return Util.combineHashCodes(super.hashCode(), this.sourceStart);
 	}
 	
-	public Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
+	@Override
+	public boolean hCanEqual(Object obj) {
+		return obj instanceof LambdaExpression;
+}
+	
+	@Override
+	public IElement[] hChildren() throws CoreException {
+		return new IElement[] { this.lambdaMethod };
+	}
+
+	@Override
+	public Object hFindBody() {
 		return this.elementInfo;
+	}
+
+	@Override
+	public void hToStringName(StringBuilder builder, IContext context) {
+		super.hToStringName(builder, context);
+		builder.append("<lambda #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
 	}
 
 	protected char getHandleMementoDelimiter() {
@@ -239,10 +256,6 @@ public class LambdaExpression extends SourceType {
 		}
 	}
 
-	public IJavaElement[] getChildren() throws JavaModelException {
-		return new IJavaElement[] { this.lambdaMethod };
-	}
-
 	public boolean isLocal() {
 		return true;
 	}
@@ -264,13 +277,6 @@ public class LambdaExpression extends SourceType {
 	@Override
 	public boolean isAnonymous() {
 		return false;
-	}
-
-	public void toStringName(StringBuffer buffer) {
-		super.toStringName(buffer);
-		buffer.append("<lambda #"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-		buffer.append(">"); //$NON-NLS-1$
 	}
 
 	@Override

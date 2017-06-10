@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,6 +12,7 @@
 package org.eclipse.jdt.internal.core;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.IAnnotation;
 import org.eclipse.jdt.core.ILocalVariable;
@@ -291,7 +292,7 @@ public String[] getParameterNames() throws JavaModelException {
 		}
 		JavadocContents javadocContents = null;
 		IType declaringType = getDeclaringType();
-		PerProjectInfo projectInfo = JavaModelManager.getJavaModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+		PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
 		synchronized (projectInfo.javadocCache) {
 			javadocContents = (JavadocContents) projectInfo.javadocCache.get(declaringType);
 			if (javadocContents == null) {
@@ -593,6 +594,67 @@ public int hashCode() {
 	}
 	return hash;
 }
+@Override
+public boolean hCanEqual(Object obj) {
+	return obj instanceof BinaryMethod;
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object info, IContext context) {
+	if (info == null) {
+		hToStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (info == NO_BODY) {
+		hToStringName(builder, context);
+	} else {
+		IBinaryMethod methodInfo = (IBinaryMethod) info;
+		int flags = methodInfo.getModifiers();
+		if (Flags.isStatic(flags)) {
+			builder.append("static "); //$NON-NLS-1$
+		}
+		if (!methodInfo.isConstructor()) {
+			builder.append(Signature.toString(getReturnType(methodInfo)));
+			builder.append(' ');
+		}
+		toStringName(builder, flags);
+	}
+}
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	toStringName(builder, 0);
+}
+private void toStringName(StringBuilder builder, int flags) {
+	builder.append(getElementName());
+	builder.append('(');
+	String[] parameters = getParameterTypes();
+	int length;
+	if (parameters != null && (length = parameters.length) > 0) {
+		boolean isVarargs = Flags.isVarargs(flags);
+		for (int i = 0; i < length; i++) {
+			try {
+				if (i < length - 1) {
+					builder.append(Signature.toString(parameters[i]));
+					builder.append(", "); //$NON-NLS-1$
+				} else if (isVarargs) {
+					// remove array from signature
+					String parameter = parameters[i].substring(1);
+					builder.append(Signature.toString(parameter));
+					builder.append(" ..."); //$NON-NLS-1$
+				} else {
+					builder.append(Signature.toString(parameters[i]));
+				}
+			} catch (IllegalArgumentException e) {
+				// parameter signature is malformed
+				builder.append("*** invalid signature: "); //$NON-NLS-1$
+				builder.append(parameters[i]);
+			}
+		}
+	}
+	builder.append(')');
+	if (this.occurrenceCount > 1) {
+		builder.append("#"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+	}
+}
 /*
  * @see IMethod
  */
@@ -654,64 +716,6 @@ public JavaElement resolved(Binding binding) {
 	SourceRefElement resolvedHandle = new ResolvedBinaryMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	return resolvedHandle;
-}/*
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		toStringName(buffer);
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		toStringName(buffer);
-	} else {
-		IBinaryMethod methodInfo = (IBinaryMethod) info;
-		int flags = methodInfo.getModifiers();
-		if (Flags.isStatic(flags)) {
-			buffer.append("static "); //$NON-NLS-1$
-		}
-		if (!methodInfo.isConstructor()) {
-			buffer.append(Signature.toString(getReturnType(methodInfo)));
-			buffer.append(' ');
-		}
-		toStringName(buffer, flags);
-	}
-}
-protected void toStringName(StringBuffer buffer) {
-	toStringName(buffer, 0);
-}
-protected void toStringName(StringBuffer buffer, int flags) {
-	buffer.append(getElementName());
-	buffer.append('(');
-	String[] parameters = getParameterTypes();
-	int length;
-	if (parameters != null && (length = parameters.length) > 0) {
-		boolean isVarargs = Flags.isVarargs(flags);
-		for (int i = 0; i < length; i++) {
-			try {
-				if (i < length - 1) {
-					buffer.append(Signature.toString(parameters[i]));
-					buffer.append(", "); //$NON-NLS-1$
-				} else if (isVarargs) {
-					// remove array from signature
-					String parameter = parameters[i].substring(1);
-					buffer.append(Signature.toString(parameter));
-					buffer.append(" ..."); //$NON-NLS-1$
-				} else {
-					buffer.append(Signature.toString(parameters[i]));
-				}
-			} catch (IllegalArgumentException e) {
-				// parameter signature is malformed
-				buffer.append("*** invalid signature: "); //$NON-NLS-1$
-				buffer.append(parameters[i]);
-			}
-		}
-	}
-	buffer.append(')');
-	if (this.occurrenceCount > 1) {
-		buffer.append("#"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-	}
 }
 public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
 	JavadocContents javadocContents = ((BinaryType) this.getDeclaringType()).getJavadocContents(monitor);

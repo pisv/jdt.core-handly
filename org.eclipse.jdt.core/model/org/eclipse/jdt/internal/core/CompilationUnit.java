@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,11 +12,24 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.of;
+import static org.eclipse.handly.context.Contexts.with;
+
 import java.io.IOException;
 import java.util.*;
 
 import org.eclipse.core.resources.*;
 import org.eclipse.core.runtime.*;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.Elements;
+import org.eclipse.handly.model.IElement;
+import org.eclipse.handly.model.ISourceConstruct;
+import org.eclipse.handly.model.ISourceElement;
+import org.eclipse.handly.model.ISourceElementInfo;
+import org.eclipse.handly.model.impl.ISourceFileImpl;
+import org.eclipse.handly.snapshot.ISnapshot;
+import org.eclipse.handly.util.Property;
+import org.eclipse.handly.util.TextRange;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.*;
 import org.eclipse.jdt.core.dom.AST;
@@ -40,7 +53,7 @@ import org.eclipse.text.edits.UndoEdit;
  * @see ICompilationUnit
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class CompilationUnit extends Openable implements ICompilationUnit, org.eclipse.jdt.internal.compiler.env.ICompilationUnit, SuffixConstants {
+public class CompilationUnit extends Openable implements ICompilationUnit, ISourceFileImpl, org.eclipse.jdt.internal.compiler.env.ICompilationUnit, SuffixConstants {
 	/**
 	 * Internal synonym for deprecated constant AST.JSL2
 	 * to alleviate deprecation warnings.
@@ -49,6 +62,8 @@ public class CompilationUnit extends Openable implements ICompilationUnit, org.e
 	/*package*/ static final int JLS2_INTERNAL = AST.JLS2;
 
 	private static final IImportDeclaration[] NO_IMPORTS = new IImportDeclaration[0];
+	
+	private static final Property<ASTHolderCUInfo> AST_HOLDER = Property.get(CompilationUnit.class.getName() + ".astHolderCUInfo", ASTHolderCUInfo.class); //$NON-NLS-1$
 
 	protected String name;
 	public WorkingCopyOwner owner;
@@ -62,7 +77,6 @@ public CompilationUnit(PackageFragment parent, String name, WorkingCopyOwner own
 	this.name = name;
 	this.owner = owner;
 }
-
 
 /*
  * @see ICompilationUnit#applyTextEdit(TextEdit, IProgressMonitor)
@@ -89,8 +103,7 @@ public UndoEdit applyTextEdit(TextEdit edit, IProgressMonitor monitor) throws Ja
  * @see ICompilationUnit#becomeWorkingCopy(IProblemRequestor, IProgressMonitor)
  */
 public void becomeWorkingCopy(IProblemRequestor problemRequestor, IProgressMonitor monitor) throws JavaModelException {
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = manager.getPerWorkingCopyInfo(this, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = hModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
 	if (perWorkingCopyInfo == null) {
 		// close cu and its children
 		close();
@@ -105,111 +118,6 @@ public void becomeWorkingCopy(IProblemRequestor problemRequestor, IProgressMonit
 public void becomeWorkingCopy(IProgressMonitor monitor) throws JavaModelException {
 	IProblemRequestor requestor = this.owner == null ? null : this.owner.getProblemRequestor(this);
 	becomeWorkingCopy(requestor, monitor);
-}
-protected boolean buildStructure(OpenableElementInfo info, final IProgressMonitor pm, Map newElements, IResource underlyingResource) throws JavaModelException {
-	CompilationUnitElementInfo unitInfo = (CompilationUnitElementInfo) info;
-
-	// ensure buffer is opened
-	IBuffer buffer = getBufferManager().getBuffer(CompilationUnit.this);
-	if (buffer == null) {
-		openBuffer(pm, unitInfo); // open buffer independently from the info, since we are building the info
-	}
-
-	// generate structure and compute syntax problems if needed
-	CompilationUnitStructureRequestor requestor = new CompilationUnitStructureRequestor(this, unitInfo, newElements);
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = getPerWorkingCopyInfo();
-	IJavaProject project = getJavaProject();
-
-	boolean createAST;
-	boolean resolveBindings;
-	int reconcileFlags;
-	HashMap problems;
-	if (info instanceof ASTHolderCUInfo) {
-		ASTHolderCUInfo astHolder = (ASTHolderCUInfo) info;
-		createAST = astHolder.astLevel != NO_AST;
-		resolveBindings = astHolder.resolveBindings;
-		reconcileFlags = astHolder.reconcileFlags;
-		problems = astHolder.problems;
-	} else {
-		createAST = false;
-		resolveBindings = false;
-		reconcileFlags = 0;
-		problems = null;
-	}
-
-	boolean computeProblems = perWorkingCopyInfo != null && perWorkingCopyInfo.isActive() && project != null && JavaProject.hasJavaNature(project.getProject());
-	IProblemFactory problemFactory = new DefaultProblemFactory();
-	Map options = project == null ? JavaCore.getOptions() : project.getOptions(true);
-	if (!computeProblems) {
-		// disable task tags checking to speed up parsing
-		options.put(JavaCore.COMPILER_TASK_TAGS, ""); //$NON-NLS-1$
-	}
-	CompilerOptions compilerOptions = new CompilerOptions(options);
-	compilerOptions.ignoreMethodBodies = (reconcileFlags & ICompilationUnit.IGNORE_METHOD_BODIES) != 0;
-	SourceElementParser parser = new SourceElementParser(
-		requestor,
-		problemFactory,
-		compilerOptions,
-		true/*report local declarations*/,
-		!createAST /*optimize string literals only if not creating a DOM AST*/);
-	parser.reportOnlyOneSyntaxError = !computeProblems;
-	parser.setMethodsFullRecovery(true);
-	parser.setStatementsRecovery((reconcileFlags & ICompilationUnit.ENABLE_STATEMENTS_RECOVERY) != 0);
-
-	if (!computeProblems && !resolveBindings && !createAST) // disable javadoc parsing if not computing problems, not resolving and not creating ast
-		parser.javadocParser.checkDocComment = false;
-	requestor.parser = parser;
-
-	// update timestamp (might be IResource.NULL_STAMP if original does not exist)
-	if (underlyingResource == null) {
-		underlyingResource = getResource();
-	}
-	// underlying resource is null in the case of a working copy on a class file in a jar
-	if (underlyingResource != null)
-		unitInfo.timestamp = ((IFile)underlyingResource).getModificationStamp();
-
-	// compute other problems if needed
-	CompilationUnitDeclaration compilationUnitDeclaration = null;
-	CompilationUnit source = cloneCachingContents();
-	try {
-		if (computeProblems) {
-			if (problems == null) {
-				// report problems to the problem requestor
-				problems = new HashMap();
-				compilationUnitDeclaration = CompilationUnitProblemFinder.process(source, parser, this.owner, problems, createAST, reconcileFlags, pm);
-				try {
-					perWorkingCopyInfo.beginReporting();
-					for (Iterator iteraror = problems.values().iterator(); iteraror.hasNext();) {
-						CategorizedProblem[] categorizedProblems = (CategorizedProblem[]) iteraror.next();
-						if (categorizedProblems == null) continue;
-						for (int i = 0, length = categorizedProblems.length; i < length; i++) {
-							perWorkingCopyInfo.acceptProblem(categorizedProblems[i]);
-						}
-					}
-				} finally {
-					perWorkingCopyInfo.endReporting();
-				}
-			} else {
-				// collect problems
-				compilationUnitDeclaration = CompilationUnitProblemFinder.process(source, parser, this.owner, problems, createAST, reconcileFlags, pm);
-			}
-		} else {
-			compilationUnitDeclaration = parser.parseCompilationUnit(source, true /*full parse to find local elements*/, pm);
-		}
-
-		if (createAST) {
-			int astLevel = ((ASTHolderCUInfo) info).astLevel;
-			org.eclipse.jdt.core.dom.CompilationUnit cu = AST.convertCompilationUnit(astLevel, compilationUnitDeclaration, options, computeProblems, source, reconcileFlags, pm);
-			((ASTHolderCUInfo) info).ast = cu;
-		}
-	} finally {
-	    if (compilationUnitDeclaration != null) {
-	    	unitInfo.hasFunctionalTypes = compilationUnitDeclaration.hasFunctionalTypes();
-	        compilationUnitDeclaration.cleanUp();
-	    }
-	}
-
-	return unitInfo.isStructureKnown();
 }
 /*
  * Clone this handle so that it caches its contents in memory.
@@ -232,29 +140,15 @@ public CompilationUnit cloneCachingContents() {
  * @see Openable#canBeRemovedFromCache
  */
 public boolean canBeRemovedFromCache() {
-	if (getPerWorkingCopyInfo() != null) return false; // working copies should remain in the cache until they are destroyed
+	if (hIsWorkingCopy()) return false; // working copies should remain in the cache until they are destroyed
 	return super.canBeRemovedFromCache();
 }
 /*
  * @see Openable#canBufferBeRemovedFromCache
  */
 public boolean canBufferBeRemovedFromCache(IBuffer buffer) {
-	if (getPerWorkingCopyInfo() != null) return false; // working copy buffers should remain in the cache until working copy is destroyed
+	if (hIsWorkingCopy()) return false; // working copy buffers should remain in the cache until working copy is destroyed
 	return super.canBufferBeRemovedFromCache(buffer);
-}/*
- * @see IOpenable#close
- */
-public void close() throws JavaModelException {
-	if (getPerWorkingCopyInfo() != null) return; // a working copy must remain opened until it is discarded
-	super.close();
-}
-/*
- * @see Openable#closing
- */
-protected void closing(Object info) {
-	if (getPerWorkingCopyInfo() == null) {
-		super.closing(info);
-	} // else the buffer of a working copy must remain open for the lifetime of the working copy
 }
 /**
  * @see ICodeAssist#codeComplete(int, ICompletionRequestor)
@@ -651,7 +545,7 @@ public char[] getContents() {
 		try {
 			return Util.getResourceContentsAsCharArray(file, encoding);
 		} catch (JavaModelException e) {
-			if (JavaModelManager.getJavaModelManager().abortOnMissingSource.get() == Boolean.TRUE) {
+			if (hModelManager().abortOnMissingSource.get() == Boolean.TRUE) {
 				IOException ioException =
 					e.getJavaModelStatus().getCode() == IJavaModelStatusConstants.IO_EXCEPTION ?
 						(IOException)e.getException() :
@@ -771,7 +665,7 @@ public IImportContainer getImportContainer() {
  */
 public IImportDeclaration[] getImports() throws JavaModelException {
 	IImportContainer container= getImportContainer();
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
+	JavaModelManager manager = hModelManager();
 	Object info = manager.getInfo(container);
 	if (info == null) {
 		if (manager.getInfo(this) != null)
@@ -874,7 +768,7 @@ public IPath getPath() {
  * Note: the use count of the per working copy info is NOT incremented.
  */
 public JavaModelManager.PerWorkingCopyInfo getPerWorkingCopyInfo() {
-	return JavaModelManager.getJavaModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, false/*don't record usage*/, null/*no problem requestor needed*/);
+	return hModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, false/*don't record usage*/, null/*no problem requestor needed*/);
 }
 /*
  * @see ICompilationUnit#getPrimary()
@@ -976,11 +870,9 @@ public IJavaElement getWorkingCopy(IProgressMonitor monitor, IBufferFactory fact
 public ICompilationUnit getWorkingCopy(WorkingCopyOwner workingCopyOwner, IProblemRequestor problemRequestor, IProgressMonitor monitor) throws JavaModelException {
 	if (!isPrimary()) return this;
 
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
-
 	CompilationUnit workingCopy = new CompilationUnit((PackageFragment)getParent(), getElementName(), workingCopyOwner);
 	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo =
-		manager.getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
+		hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
 	if (perWorkingCopyInfo != null) {
 		return perWorkingCopyInfo.getWorkingCopy(); // return existing handle instead of the one created above
 	}
@@ -1002,11 +894,217 @@ public boolean hasResourceChanged() {
 
 	// if resource got deleted, then #getModificationStamp() will answer IResource.NULL_STAMP, which is always different from the cached
 	// timestamp
-	Object info = JavaModelManager.getJavaModelManager().getInfo(this);
+	Object info = hModelManager().getInfo(this);
 	if (info == null) return false;
 	IResource resource = getResource();
 	if (resource == null) return false;
 	return ((CompilationUnitElementInfo)info).timestamp != resource.getModificationStamp();
+}
+@Override
+public org.eclipse.handly.buffer.IBuffer hBuffer(IContext context, IProgressMonitor monitor) throws CoreException {
+	IBuffer buffer = getBuffer();
+	if (buffer == null)
+		throw new AssertionError();
+	return new BufferAdapter(buffer);
+}
+@Override
+public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	Map<IElement, Object> newElements = context.get(NEW_ELEMENTS);
+	CompilationUnitElementInfo unitInfo = new CompilationUnitElementInfo();
+
+	 // puts the info before building the structure so that questions to the handle behave as if the element existed
+	 // (case of compilation units becoming working copies)
+	newElements.put(this, unitInfo);
+
+	// ensure buffer is opened
+	IBuffer buffer = getBufferManager().getBuffer(CompilationUnit.this);
+	if (buffer == null) {
+		openBuffer(pm, unitInfo); // open buffer independently from the info, since we are building the info
+	}
+
+	// generate structure and compute syntax problems if needed
+	CompilationUnitStructureRequestor requestor = new CompilationUnitStructureRequestor(this, unitInfo, newElements);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = getPerWorkingCopyInfo();
+	IJavaProject project = getJavaProject();
+
+	boolean createAST;
+	boolean resolveBindings;
+	int reconcileFlags;
+	HashMap problems;
+	ASTHolderCUInfo astHolder = context.get(AST_HOLDER);
+	if (astHolder != null) {
+		createAST = astHolder.astLevel != NO_AST;
+		resolveBindings = astHolder.resolveBindings;
+		reconcileFlags = astHolder.reconcileFlags;
+		problems = astHolder.problems;
+	} else {
+		createAST = false;
+		resolveBindings = false;
+		reconcileFlags = 0;
+		problems = null;
+	}
+
+	boolean computeProblems = perWorkingCopyInfo != null && perWorkingCopyInfo.isActive() && project != null && JavaProject.hasJavaNature(project.getProject());
+	IProblemFactory problemFactory = new DefaultProblemFactory();
+	Map options = project == null ? JavaCore.getOptions() : project.getOptions(true);
+	if (!computeProblems) {
+		// disable task tags checking to speed up parsing
+		options.put(JavaCore.COMPILER_TASK_TAGS, ""); //$NON-NLS-1$
+	}
+	CompilerOptions compilerOptions = new CompilerOptions(options);
+	compilerOptions.ignoreMethodBodies = (reconcileFlags & ICompilationUnit.IGNORE_METHOD_BODIES) != 0;
+	SourceElementParser parser = new SourceElementParser(
+		requestor,
+		problemFactory,
+		compilerOptions,
+		true/*report local declarations*/,
+		!createAST /*optimize string literals only if not creating a DOM AST*/);
+	parser.reportOnlyOneSyntaxError = !computeProblems;
+	parser.setMethodsFullRecovery(true);
+	parser.setStatementsRecovery((reconcileFlags & ICompilationUnit.ENABLE_STATEMENTS_RECOVERY) != 0);
+
+	if (!computeProblems && !resolveBindings && !createAST) // disable javadoc parsing if not computing problems, not resolving and not creating ast
+		parser.javadocParser.checkDocComment = false;
+	requestor.parser = parser;
+
+	// update timestamp (might be IResource.NULL_STAMP if original does not exist)
+	IResource underlyingResource = getResource();
+	// underlying resource is null in the case of a working copy on a class file in a jar
+	if (underlyingResource != null)
+		unitInfo.timestamp = ((IFile)underlyingResource).getModificationStamp();
+
+	// compute other problems if needed
+	CompilationUnitDeclaration compilationUnitDeclaration = null;
+	CompilationUnit source = cloneCachingContents();
+	try {
+		if (computeProblems) {
+			if (problems == null) {
+				// report problems to the problem requestor
+				problems = new HashMap();
+				compilationUnitDeclaration = CompilationUnitProblemFinder.process(source, parser, this.owner, problems, createAST, reconcileFlags, pm);
+				try {
+					perWorkingCopyInfo.beginReporting();
+					for (Iterator iteraror = problems.values().iterator(); iteraror.hasNext();) {
+						CategorizedProblem[] categorizedProblems = (CategorizedProblem[]) iteraror.next();
+						if (categorizedProblems == null) continue;
+						for (int i = 0, length = categorizedProblems.length; i < length; i++) {
+							perWorkingCopyInfo.acceptProblem(categorizedProblems[i]);
+						}
+					}
+				} finally {
+					perWorkingCopyInfo.endReporting();
+				}
+			} else {
+				// collect problems
+				compilationUnitDeclaration = CompilationUnitProblemFinder.process(source, parser, this.owner, problems, createAST, reconcileFlags, pm);
+			}
+		} else {
+			compilationUnitDeclaration = parser.parseCompilationUnit(source, true /*full parse to find local elements*/, pm);
+		}
+
+		if (createAST) {
+			int astLevel = astHolder.astLevel;
+			org.eclipse.jdt.core.dom.CompilationUnit cu = AST.convertCompilationUnit(astLevel, compilationUnitDeclaration, options, computeProblems, source, reconcileFlags, pm);
+			astHolder.ast = cu;
+		}
+
+	} finally {
+		if (compilationUnitDeclaration != null) {
+			unitInfo.hasFunctionalTypes = compilationUnitDeclaration.hasFunctionalTypes();
+			compilationUnitDeclaration.cleanUp();
+		}
+	}
+}
+@Override
+public void hClose(IContext context) {
+	if (hIsWorkingCopy())
+		return;
+	super.hClose(context);
+}
+@Override
+public void hGenerateAncestorBodies(IContext context, IProgressMonitor monitor) throws CoreException {
+	if (hIsWorkingCopy())
+		return; // don't open ancestors for a working copy
+	super.hGenerateAncestorBodies(context, monitor);
+}
+@Override
+public boolean hIsWorkingCopy() {
+	return getPerWorkingCopyInfo() != null;
+}
+@Override
+public boolean hNeedsReconciling() {
+	return !isConsistent();
+}
+@Override
+public void hReconcile(IContext context, IProgressMonitor monitor) throws CoreException {
+	reconcile(context.getOrDefault(Elements.FORCE_RECONCILING), monitor);
+}
+
+@Override
+public ISourceElement hSourceElementAt(int position, ISnapshot base) throws CoreException {
+	return (ISourceElement) getElementAt(position);
+}
+@Override
+public ISourceElementInfo hSourceElementInfo() throws CoreException {
+	CompilationUnitElementInfo info = (CompilationUnitElementInfo) hBody();
+	TextRange fullRange = new TextRange(0, info.getSourceLength());
+	IJavaElement[] children = info.getChildren();
+	ISourceConstruct[] sourceConstructs = new ISourceConstruct[children.length];
+	System.arraycopy(children, 0, sourceConstructs, 0, children.length);
+	return new ISourceElementInfo() {
+		
+		@Override
+		public ISnapshot getSnapshot() {
+			return null;
+		}
+		@Override
+		public TextRange getIdentifyingRange() {
+			return null;
+		}
+		@Override
+		public TextRange getFullRange() {
+			return fullRange;
+		}
+		@Override
+		public ISourceConstruct[] getChildren() {
+			return sourceConstructs;
+		}
+		@Override
+		public <T> T get(Property<T> property) {
+			return null;
+		}
+	};
+}
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	if (!isPrimary()) {
+		builder.append("[Working copy] "); //$NON-NLS-1$
+		hToStringName(builder, context);
+	} else {
+		if (isWorkingCopy()) {
+			builder.append("[Working copy] "); //$NON-NLS-1$
+			hToStringName(builder, context);
+			if (body == null) {
+				builder.append(" (not open)"); //$NON-NLS-1$
+			}
+		} else {
+			super.hToStringBody(builder, body, context);
+		}
+	}
+}
+@Override
+public void hValidateExistence(IContext context) throws CoreException {
+	// check if this compilation unit can be opened
+	if (!isWorkingCopy()) { // no check is done on root kind or exclusion pattern for working copies
+		IStatus status = validateCompilationUnit(resource());
+		if (!status.isOK())
+			throw newJavaModelException(status);
+	}
+
+	// prevents reopening of non-primary working copies (they are closed when they are discarded and should not be reopened)
+	if (!isPrimary() && !hIsWorkingCopy()) {
+		throw hDoesNotExistException();
+	}
 }
 public boolean ignoreOptionalProblems() {
 	return getPackageFragmentRoot().ignoreOptionalProblems();
@@ -1024,7 +1122,7 @@ public boolean isBasedOn(IResource resource) {
  * @see IOpenable#isConsistent()
  */
 public boolean isConsistent() {
-	return !JavaModelManager.getJavaModelManager().getElementsOutOfSynchWithBuffers().contains(this);
+	return !hModelManager().getElementsOutOfSynchWithBuffers().contains(this);
 }
 public boolean isPrimary() {
 	return this.owner == DefaultWorkingCopyOwner.PRIMARY;
@@ -1061,7 +1159,7 @@ protected IStatus validateCompilationUnit(IResource resource) {
 public boolean isWorkingCopy() {
 	// For backward compatibility, non primary working copies are always returning true; in removal
 	// delta, clients can still check that element was a working copy before being discarded.
-	return !isPrimary() || getPerWorkingCopyInfo() != null;
+	return !isPrimary() || hIsWorkingCopy();
 }
 /**
  * @see IOpenable#makeConsistent(IProgressMonitor)
@@ -1073,7 +1171,7 @@ public org.eclipse.jdt.core.dom.CompilationUnit makeConsistent(int astLevel, boo
 	if (isConsistent()) return null;
 
 	try {
-		JavaModelManager.getJavaModelManager().abortOnMissingSource.set(Boolean.TRUE);
+		hModelManager().abortOnMissingSource.set(Boolean.TRUE);
 		// create a new info and make it the current info
 		// (this will remove the info and its children just before storing the new infos)
 		if (astLevel != NO_AST || problems != null) {
@@ -1082,16 +1180,18 @@ public org.eclipse.jdt.core.dom.CompilationUnit makeConsistent(int astLevel, boo
 			info.resolveBindings = resolveBindings;
 			info.reconcileFlags = reconcileFlags;
 			info.problems = problems;
-			openWhenClosed(info, true, monitor);
+			hOpen(with(of(AST_HOLDER, info), of(FORCE_OPEN, true)), monitor);
 			org.eclipse.jdt.core.dom.CompilationUnit result = info.ast;
 			info.ast = null;
 			return result;
 		} else {
-			openWhenClosed(createElementInfo(), true, monitor);
+			hOpen(of(FORCE_OPEN, true), monitor);
 			return null;
 		}
+	} catch (CoreException e) {
+		throw Util.toJavaModelException(e);
 	} finally {
-		JavaModelManager.getJavaModelManager().abortOnMissingSource.set(null);
+		hModelManager().abortOnMissingSource.set(null);
 	}
 }
 /**
@@ -1171,13 +1271,6 @@ protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelE
 	}
 	return buffer;
 }
-protected void openAncestors(HashMap newElements, IProgressMonitor monitor) throws JavaModelException {
-	if (!isWorkingCopy()) {
-		super.openAncestors(newElements, monitor);
-	}
-	// else don't open ancestors for a working copy to speed up the first becomeWorkingCopy
-	// (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=89411)
-}
 /*
  * @see #cloneCachingContents()
  */
@@ -1244,7 +1337,7 @@ public org.eclipse.jdt.core.dom.CompilationUnit reconcile(
 		stats.startRun(new String(getFileName()));
 	}
 	ReconcileWorkingCopyOperation op = new ReconcileWorkingCopyOperation(this, astLevel, reconcileFlags, workingCopyOwner);
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
+	JavaModelManager manager = hModelManager();
 	try {
 		manager.cacheZipFiles(this); // cache zip files for performance (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=134172)
 		op.runOperation(monitor);
@@ -1296,27 +1389,6 @@ public void save(IProgressMonitor pm, boolean force) throws JavaModelException {
 		super.save(pm, force);
 	}
 }
-/**
- * Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	if (!isPrimary()) {
-		buffer.append(tabString(tab));
-		buffer.append("[Working copy] "); //$NON-NLS-1$
-		toStringName(buffer);
-	} else {
-		if (isWorkingCopy()) {
-			buffer.append(tabString(tab));
-			buffer.append("[Working copy] "); //$NON-NLS-1$
-			toStringName(buffer);
-			if (info == null) {
-				buffer.append(" (not open)"); //$NON-NLS-1$
-			}
-		} else {
-			super.toStringInfo(tab, buffer, info, showResolvedInfo);
-		}
-	}
-}
 /*
  * Assume that this is a working copy
  */
@@ -1328,22 +1400,6 @@ protected void updateTimeStamp(CompilationUnit original) throws JavaModelExcepti
 			new JavaModelStatus(IJavaModelStatusConstants.INVALID_RESOURCE));
 	}
 	((CompilationUnitElementInfo) getElementInfo()).timestamp = timeStamp;
-}
-
-protected IStatus validateExistence(IResource underlyingResource) {
-	// check if this compilation unit can be opened
-	if (!isWorkingCopy()) { // no check is done on root kind or exclusion pattern for working copies
-		IStatus status = validateCompilationUnit(underlyingResource);
-		if (!status.isOK())
-			return status;
-	}
-
-	// prevents reopening of non-primary working copies (they are closed when they are discarded and should not be reopened)
-	if (!isPrimary() && getPerWorkingCopyInfo() == null) {
-		return newDoesNotExistStatus();
-	}
-
-	return JavaModelStatus.VERIFIED_OK;
 }
 
 public ISourceRange getNameRange() {

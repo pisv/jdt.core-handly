@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2013 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -52,7 +52,7 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 	public int reconcileFlags;
 	WorkingCopyOwner workingCopyOwner;
 	public org.eclipse.jdt.core.dom.CompilationUnit ast;
-	public JavaElementDeltaBuilder deltaBuilder;
+	public JavaElementDelta delta;
 	public boolean requestorIsActive;
 
 	public ReconcileWorkingCopyOperation(IJavaElement workingCopy, int astLevel, int reconcileFlags, WorkingCopyOwner workingCopyOwner) {
@@ -83,9 +83,6 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 			boolean ownerRequestorIsActive = ownerProblemRequestor != null && ownerProblemRequestor != problemRequestor && ownerProblemRequestor.isActive();
 			this.requestorIsActive = defaultRequestorIsActive || ownerRequestorIsActive;
 
-			// create the delta builder (this remembers the current content of the cu)
-			this.deltaBuilder = new JavaElementDeltaBuilder(workingCopy);
-
 			// make working copy consistent if needed and compute AST if needed
 			makeConsistent(workingCopy);
 
@@ -110,9 +107,8 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 			}
 
 			// report delta
-			JavaElementDelta delta = this.deltaBuilder.delta;
-			if (delta != null) {
-				addReconcileDelta(workingCopy, delta);
+			if (this.delta != null) {
+				addReconcileDelta(workingCopy, this.delta);
 			}
 		} finally {
 			done();
@@ -168,10 +164,15 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 			// make working copy consistent
 			if (this.problems == null) this.problems = new HashMap();
 			this.resolveBindings = this.requestorIsActive;
+			// create the delta builder (this remembers the current content of the cu)
+			JavaElementDeltaBuilder deltaBuilder = new JavaElementDeltaBuilder(workingCopy);
 			this.ast = workingCopy.makeConsistent(this.astLevel, this.resolveBindings, this.reconcileFlags, this.problems, this.progressMonitor);
-			this.deltaBuilder.buildDeltas();
-			if (this.ast != null && this.deltaBuilder.delta != null)
-				this.deltaBuilder.delta.changedAST(this.ast);
+			deltaBuilder.buildDelta();
+			if (!deltaBuilder.isEmptyDelta()) {
+				this.delta = deltaBuilder.getDelta();
+				if (this.ast != null)
+					this.delta.changedAST(this.ast);
+				}
 			return this.ast;
 		}
 		if (this.ast != null)
@@ -213,10 +214,9 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 						this.reconcileFlags,
 						this.progressMonitor);
 				if (this.ast != null) {
-					if (this.deltaBuilder.delta == null) {
-						this.deltaBuilder.delta = new JavaElementDelta(workingCopy);
-					}
-					this.deltaBuilder.delta.changedAST(this.ast);
+					if (this.delta == null)
+						this.delta = new JavaElementDelta(workingCopy);
+					this.delta.changedAST(this.ast);
 				}
 				if (this.progressMonitor != null) this.progressMonitor.worked(1);
 			}

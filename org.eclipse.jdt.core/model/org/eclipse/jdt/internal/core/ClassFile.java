@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -15,8 +15,6 @@
 package org.eclipse.jdt.internal.core;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -32,6 +30,8 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
@@ -46,7 +46,6 @@ import org.eclipse.jdt.internal.core.util.Util;
  * @see IClassFile
  */
 
-@SuppressWarnings({"rawtypes"})
 public class ClassFile extends Openable implements IClassFile, SuffixConstants {
 
 	protected String name;
@@ -61,14 +60,12 @@ protected ClassFile(PackageFragment parent, String nameWithoutExtension) {
 	super(parent);
 	this.name = nameWithoutExtension;
 }
-
 /*
  * @see IClassFile#becomeWorkingCopy(IProblemRequestor, WorkingCopyOwner, IProgressMonitor)
  */
 public ICompilationUnit becomeWorkingCopy(IProblemRequestor problemRequestor, WorkingCopyOwner owner, IProgressMonitor monitor) throws JavaModelException {
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
 	CompilationUnit workingCopy = new ClassFileWorkingCopy(this, owner == null ? DefaultWorkingCopyOwner.PRIMARY : owner);
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = manager.getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
 	if (perWorkingCopyInfo == null) {
 		// close cu and its children
 		close();
@@ -81,33 +78,6 @@ public ICompilationUnit becomeWorkingCopy(IProblemRequestor problemRequestor, Wo
 	return perWorkingCopyInfo.workingCopy;
 }
 
-/**
- * Creates the children elements for this class file adding the resulting
- * new handles and info objects to the newElements table. Returns true
- * if successful, or false if an error is encountered parsing the class file.
- *
- * @see Openable
- * @see Signature
- */
-protected boolean buildStructure(OpenableElementInfo info, IProgressMonitor pm, Map newElements, IResource underlyingResource) throws JavaModelException {
-	IBinaryType typeInfo = getBinaryTypeInfo((IFile) underlyingResource);
-	if (typeInfo == null) {
-		// The structure of a class file is unknown if a class file format errors occurred
-		//during the creation of the diet class file representative of this ClassFile.
-		info.setChildren(new IJavaElement[] {});
-		return false;
-	}
-
-	// Make the type
-	IType type = getType();
-	info.setChildren(new IJavaElement[] {type});
-	newElements.put(type, typeInfo);
-
-	// Read children
-	((ClassFileInfo) info).readBinaryChildren(this, (HashMap) newElements, typeInfo);
-
-	return true;
-}
 /**
  * @see ICodeAssist#codeComplete(int, ICompletionRequestor)
  * @deprecated
@@ -182,20 +152,9 @@ public IJavaElement[] codeSelect(int offset, int length, WorkingCopyOwner owner)
 		return new IJavaElement[] {};
 	}
 }
-/**
- * Returns a new element info for this element.
- */
-protected Object createElementInfo() {
-	return new ClassFileInfo();
-}
-public boolean equals(Object o) {
-	if (!(o instanceof ClassFile)) return false;
-	ClassFile other = (ClassFile) o;
-	return this.name.equals(other.name) && this.parent.equals(other.parent);
-}
 public boolean existsUsingJarTypeCache() {
 	if (getPackageFragmentRoot().isArchive()) {
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
+		JavaModelManager manager = hModelManager();
 		IType type = getType();
 		Object info = manager.getInfo(type);
 		if (info == JavaModelCache.NON_EXISTING_JAR_TYPE_INFO)
@@ -340,7 +299,7 @@ public byte[] getBytes() throws JavaModelException {
 				throw new JavaModelException(e);
 			}
 		} finally {
-			JavaModelManager.getJavaModelManager().closeZipFile(zip);
+			hModelManager().closeZipFile(zip);
 		}
 	} else {
 		IFile file = (IFile) resource();
@@ -376,8 +335,8 @@ private IBinaryType getJarBinaryTypeInfo(PackageFragment pkg, boolean fullyIniti
 			return reader;
 		}
 	} finally {
-		JavaModelManager.getJavaModelManager().closeZipFile(zip);
-		JavaModelManager.getJavaModelManager().closeZipFile(annotationZip);
+		hModelManager().closeZipFile(zip);
+		hModelManager().closeZipFile(annotationZip);
 	}
 	return null;
 }
@@ -410,7 +369,7 @@ private void setupExternalAnnotationProvider(IProject project, final IPath exter
 		annotationZip = reader.setExternalAnnotationProvider(resolvedPath, typeName, annotationZip, new ClassFileReader.ZipFileProducer() {
 			@Override public ZipFile produce() throws IOException {
 				try {
-					return JavaModelManager.getJavaModelManager().getZipFile(externalAnnotationPath); // use (absolute, but) unresolved path here
+					return hModelManager().getZipFile(externalAnnotationPath); // use (absolute, but) unresolved path here
 				} catch (CoreException e) {
 					throw new IOException("Failed to read annotation file for "+typeName+" from "+externalAnnotationPath.toString(), e); //$NON-NLS-1$ //$NON-NLS-2$
 				}
@@ -429,15 +388,7 @@ private void setupExternalAnnotationProvider(IProject project, final IPath exter
 void closeAndRemoveFromJarTypeCache() throws JavaModelException {
 	super.close();
 	// triggered when external annotations have changed we need to recreate this class file
-	JavaModelManager.getJavaModelManager().removeFromJarTypeCache(this.binaryType);
-}
-@Override
-public void close() throws JavaModelException {
-	if (this.externalAnnotationBase != null) {
-		String entryName = Util.concatWith(((PackageFragment) getParent()).names, this.name, '/');
-		ExternalAnnotationTracker.unregisterClassFile(this.externalAnnotationBase, new Path(entryName));
-	}
-	super.close();
+	hElementManager().removeFromJarTypeCache(this.binaryType);
 }
 public IBuffer getBuffer() throws JavaModelException {
 	IStatus status = validateClassFile();
@@ -642,9 +593,8 @@ public String getTypeName() {
  */
 public ICompilationUnit getWorkingCopy(WorkingCopyOwner owner, IProgressMonitor monitor) throws JavaModelException {
 	CompilationUnit workingCopy = new ClassFileWorkingCopy(this, owner == null ? DefaultWorkingCopyOwner.PRIMARY : owner);
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
 	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo =
-		manager.getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
+		hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
 	if (perWorkingCopyInfo != null) {
 		return perWorkingCopyInfo.getWorkingCopy(); // return existing handle instead of the one created above
 	}
@@ -665,8 +615,52 @@ public IJavaElement getWorkingCopy(IProgressMonitor monitor, org.eclipse.jdt.cor
 protected boolean hasBuffer() {
 	return true;
 }
-public int hashCode() {
-	return Util.combineHashCodes(this.name.hashCode(), this.parent.hashCode());
+@Override
+public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	ClassFileInfo info = new ClassFileInfo();
+	context.get(NEW_ELEMENTS).put(this, info);
+
+	IBinaryType typeInfo = getBinaryTypeInfo((IFile) resource());
+	if (typeInfo == null) {
+		// The structure of a class file is unknown if a class file format errors occurred
+		//during the creation of the diet class file representative of this ClassFile.
+		info.setChildren(new IJavaElement[] {});
+		info.setIsStructureKnown(false);
+		return;
+	}
+
+	// Make the type
+	IType type = getType();
+	info.setChildren(new IJavaElement[] {type});
+	context.get(NEW_ELEMENTS).put((IElement) type, typeInfo);
+
+	// Read children
+	info.readBinaryChildren(this, context.get(NEW_ELEMENTS), typeInfo);
+	info.setIsStructureKnown(true);
+}
+@Override
+public void hRemove(IContext context) {
+	if (this.externalAnnotationBase != null) {
+		String entryName = Util.concatWith(((PackageFragment) getParent()).names, this.name, '/');
+		ExternalAnnotationTracker.unregisterClassFile(this.externalAnnotationBase, new Path(entryName));
+	}
+	super.hRemove(context);
+}
+@Override
+public void hValidateExistence(IContext context) throws CoreException {
+	// check whether the class file can be opened
+	IStatus status = validateClassFile();
+	if (!status.isOK())
+		throw newJavaModelException(status);
+	IResource underlyingResource = resource();
+	if (underlyingResource != null) {
+		if (!underlyingResource.isAccessible())
+			throw hDoesNotExistException();
+		PackageFragmentRoot root;
+		if ((underlyingResource instanceof IFolder) && (root = getPackageFragmentRoot()).isArchive()) { // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=204652
+			throw root.hDoesNotExistException();
+		}
+	}
 }
 /**
  * @see IClassFile
@@ -900,21 +894,6 @@ public void codeComplete(int offset, final org.eclipse.jdt.core.ICodeCompletionR
 		});
 }
 
-protected IStatus validateExistence(IResource underlyingResource) {
-	// check whether the class file can be opened
-	IStatus status = validateClassFile();
-	if (!status.isOK())
-		return status;
-	if (underlyingResource != null) {
-		if (!underlyingResource.isAccessible())
-			return newDoesNotExistStatus();
-		PackageFragmentRoot root;
-		if ((underlyingResource instanceof IFolder) && (root = getPackageFragmentRoot()).isArchive()) { // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=204652
-			return root.newDoesNotExistStatus();
-		}
-	}
-	return JavaModelStatus.VERIFIED_OK;
-}
 public ISourceRange getNameRange() {
 	return null;
 }

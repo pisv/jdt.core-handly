@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2010 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,10 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.*;
+
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.util.ToStringOptions;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.internal.core.util.MementoTokenizer;
 
@@ -19,10 +23,6 @@ import org.eclipse.jdt.internal.core.util.MementoTokenizer;
 public class ImportContainer extends SourceRefElement implements IImportContainer {
 protected ImportContainer(CompilationUnit parent) {
 	super(parent);
-}
-public boolean equals(Object o) {
-	if (!(o instanceof ImportContainer)) return false;
-	return super.equals(o);
 }
 /**
  * @see IJavaElement
@@ -92,29 +92,25 @@ public String readableName() {
 
 	return null;
 }
-/**
- * @private Debugging purposes
- */
-protected void toString(int tab, StringBuffer buffer) {
-	Object info = JavaModelManager.getJavaModelManager().peekAtInfo(this);
-	if (info == null || !(info instanceof JavaElementInfo)) return;
-	IJavaElement[] children = ((JavaElementInfo)info).getChildren();
-	for (int i = 0; i < children.length; i++) {
-		if (i > 0) buffer.append("\n"); //$NON-NLS-1$
-		((JavaElement)children[i]).toString(tab, buffer);
-	}
-}
-/**
- *  Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	buffer.append("<import container>"); //$NON-NLS-1$
-	if (info == null) {
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	}
-}
 public ISourceRange getNameRange() {
 	return null;
+}
+@Override
+public String hToString(IContext context)
+{
+	ToStringOptions.FormatStyle style = context.getOrDefault(ToStringOptions.FORMAT_STYLE);
+	if (style == ToStringOptions.FormatStyle.FULL || style == ToStringOptions.FormatStyle.LONG)
+	{
+		StringBuilder builder = new StringBuilder();
+		hToStringChildren(builder, hPeekAtBody(), with(of(ToStringOptions.FORMAT_STYLE,
+			ToStringOptions.FormatStyle.SHORT), context));
+		return builder.toString();
+	}
+	return super.hToString(context);
+}
+@Override
+public void hToStringName(StringBuilder builder, IContext context)
+{
+	builder.append("<import container>"); //$NON-NLS-1$
 }
 }

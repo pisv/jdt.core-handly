@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,12 +10,15 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.*;
+
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.Map;
 
 import org.eclipse.core.resources.*;
 import org.eclipse.core.runtime.*;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.core.util.MementoTokenizer;
@@ -147,14 +150,6 @@ public void attachSource(IPath sourcePath, IPath rootPath, IProgressMonitor moni
 	}
 }
 
-/**
- * @see Openable
- */
-protected boolean buildStructure(OpenableElementInfo info, IProgressMonitor pm, Map newElements, IResource underlyingResource) throws JavaModelException {
-	((PackageFragmentRootInfo) info).setRootKind(determineKind(underlyingResource));
-	return computeChildren(info, underlyingResource);
-}
-
 SourceMapper createSourceMapper(IPath sourcePath, IPath rootPath) throws JavaModelException {
 	IClasspathEntry entry = ((JavaProject) getParent()).getClasspathEntryFor(getPath());
 	String encoding = (entry== null) ? null : ((ClasspathEntry) entry).getSourceAttachmentEncoding();
@@ -184,7 +179,7 @@ public void delete(
  *
  * @exception JavaModelException  The resource associated with this package fragment root does not exist
  */
-protected boolean computeChildren(OpenableElementInfo info, IResource underlyingResource) throws JavaModelException {
+protected void computeChildren(PackageFragmentRootInfo info, IResource underlyingResource) throws JavaModelException {
 	// Note the children are not opened (so not added to newElements) for a regular package fragment root
 	// However they are opened for a Jar package fragment root (see JarPackageFragmentRoot#computeChildren)
 	try {
@@ -199,13 +194,13 @@ protected boolean computeChildren(OpenableElementInfo info, IResource underlying
 			IJavaElement[] children = new IJavaElement[vChildren.size()];
 			vChildren.toArray(children);
 			info.setChildren(children);
+			info.setIsStructureKnown(true);
 		}
 	} catch (JavaModelException e) {
 		//problem resolving children; structure remains unknown
 		info.setChildren(new IJavaElement[]{});
 		throw e;
 	}
-	return true;
 }
 
 /**
@@ -232,7 +227,7 @@ protected void computeFolderChildren(IContainer folder, boolean isIncluded, Stri
 			String sourceLevel = otherJavaProject.getOption(JavaCore.COMPILER_SOURCE, true);
 			String complianceLevel = otherJavaProject.getOption(JavaCore.COMPILER_COMPLIANCE, true);
 			JavaProject javaProject = (JavaProject) getJavaProject();
-			JavaModelManager manager = JavaModelManager.getJavaModelManager();
+			JavaModelManager manager = hModelManager();
 			for (int i = 0; i < length; i++) {
 				IResource member = members[i];
 				String memberName = member.getName();
@@ -290,7 +285,7 @@ public void copy(
 /**
  * Returns a new element info for this element.
  */
-protected Object createElementInfo() {
+protected PackageFragmentRootInfo createElementInfo() {
 	return new PackageFragmentRootInfo();
 }
 
@@ -491,10 +486,13 @@ public int getKind() throws JavaModelException {
  * to speed things up
  */
 int internalKind() throws JavaModelException {
-	JavaModelManager manager = JavaModelManager.getJavaModelManager();
-	PackageFragmentRootInfo info = (PackageFragmentRootInfo) manager.peekAtInfo(this);
+	PackageFragmentRootInfo info = (PackageFragmentRootInfo)hPeekAtBody();
 	if (info == null) {
-		info = (PackageFragmentRootInfo) openWhenClosed(createElementInfo(), false, null);
+		try {
+			info = (PackageFragmentRootInfo) hOpen(EMPTY_CONTEXT, null);
+		} catch (CoreException e) {
+			throw Util.toJavaModelException(e);
+		}
 	}
 	return info.getRootKind();
 }
@@ -716,6 +714,45 @@ public int hashCode() {
 	return resource().hashCode();
 }
 
+@Override
+public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	PackageFragmentRootInfo info = createElementInfo();
+	IResource underlyingResource = resource();
+	info.setRootKind(determineKind(underlyingResource));
+	computeChildren(info, underlyingResource);
+	context.get(NEW_ELEMENTS).put(this, info);
+}
+
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	IPath path = getPath();
+	if (isExternal()) {
+		builder.append(path.toOSString());
+	} else if (getJavaProject().getElementName().equals(path.segment(0))) {
+		if (path.segmentCount() == 1) {
+			builder.append("<project root>"); //$NON-NLS-1$
+		} else {
+			builder.append(path.removeFirstSegments(1).makeRelative());
+		}
+	} else {
+		builder.append(path);
+	}
+	if (body == null) {
+		builder.append(" (not open)"); //$NON-NLS-1$
+	}
+}
+
+@Override
+public void hValidateExistence(IContext context) throws CoreException {
+	// check whether this pkg fragment root can be opened
+	IStatus status = validateOnClasspath();
+	if (!status.isOK())
+		throw newJavaModelException(status);
+	IResource underlyingResource = resource();
+	if (!resourceExists(underlyingResource))
+		throw hDoesNotExistException();
+}
+
 public boolean ignoreOptionalProblems() {
 	try {
 		return ((PackageFragmentRootInfo) getElementInfo()).ignoreOptionalProblems(this);
@@ -771,38 +808,6 @@ public void move(
 	MovePackageFragmentRootOperation op =
 		new MovePackageFragmentRootOperation(this, destination, updateResourceFlags, updateModelFlags, sibling);
 	op.runOperation(monitor);
-}
-
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	IPath path = getPath();
-	if (isExternal()) {
-		buffer.append(path.toOSString());
-	} else if (getJavaProject().getElementName().equals(path.segment(0))) {
-	    if (path.segmentCount() == 1) {
-			buffer.append("<project root>"); //$NON-NLS-1$
-	    } else {
-			buffer.append(path.removeFirstSegments(1).makeRelative());
-	    }
-	} else {
-		buffer.append(path);
-	}
-	if (info == null) {
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	}
-}
-
-protected IStatus validateExistence(IResource underlyingResource) {
-	// check whether this pkg fragment root can be opened
-	IStatus status = validateOnClasspath();
-	if (!status.isOK())
-		return status;
-	if (!resourceExists(underlyingResource))
-		return newDoesNotExistStatus();
-	return JavaModelStatus.VERIFIED_OK;
 }
 
 /**

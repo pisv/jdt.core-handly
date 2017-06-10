@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2016 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -430,11 +430,7 @@ public class DeltaProcessor {
 										checkExternalFolderChange(project, javaProject);
 									}
 								} else {
-									try {
-										javaProject.close();
-									} catch (JavaModelException e) {
-										// java project doesn't exist: ignore
-									}
+									javaProject.close();
 									removeFromParentInfo(javaProject);
 									this.manager.removePerProjectInfo(javaProject, false /* don't remove index files and timestamp info of external jar */);
 									this.manager.containerRemove(javaProject);
@@ -463,11 +459,7 @@ public class DeltaProcessor {
 										// remove container cache for this project
 										this.manager.containerRemove(javaProject);
 										// close project
-										try {
-											javaProject.close();
-										} catch (JavaModelException e) {
-											// java project doesn't exist: ignore
-										}
+										javaProject.close();
 										removeFromParentInfo(javaProject);
 									}
 									this.state.rootsAreStale = true;
@@ -606,11 +598,7 @@ public class DeltaProcessor {
 	 * Closes the given element, which removes it from the cache of open elements.
 	 */
 	private void close(Openable element) {
-		try {
-			element.close();
-		} catch (JavaModelException e) {
-			// do nothing
-		}
+		element.close();
 	}
 	/*
 	 * Generic processing for elements with changed contents:<ul>

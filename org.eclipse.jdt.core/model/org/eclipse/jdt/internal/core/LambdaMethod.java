@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2014 IBM Corporation and others.
+ * Copyright (c) 2014, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,7 +11,6 @@
 
 package org.eclipse.jdt.internal.core;
 
-import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.ILocalVariable;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.JavaModelException;
@@ -55,20 +54,12 @@ public class LambdaMethod extends SourceMethod {
 		return true;
 	}
 	
-	protected void closing(Object info) {
-		// nothing to do.
-	}
-	
 	public boolean equals(Object o) {
 		if (!(o instanceof LambdaMethod)) return false;
 		LambdaMethod that = (LambdaMethod) o;
 		return super.equals(o) && this.sourceStart == that.sourceStart;
 	}
 
-	public Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
-		return this.elementInfo;
-	}
-	
 	public void getHandleMemento(StringBuffer buff, boolean serializeParent) {
 		if (serializeParent) {
 			((LambdaExpression) getParent()).getHandleMemento(buff, true, false);
@@ -111,6 +102,16 @@ public class LambdaMethod extends SourceMethod {
 	   return Util.combineHashCodes(super.hashCode(), this.sourceStart);
 	}
 	
+	@Override
+	public boolean hCanEqual(Object obj) {
+		return obj instanceof LambdaMethod;
+	}
+
+	@Override
+	public Object hFindBody() {
+		return this.elementInfo;
+	}
+
 	public boolean isResolved() {
 		return true;  // we maintain enough information so as not to need another layer of abstraction.
 	}

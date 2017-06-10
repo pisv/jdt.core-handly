@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,8 +12,13 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import static org.eclipse.handly.context.Contexts.*;
+
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.handly.model.impl.IElementImplExtension;
 import org.eclipse.jdt.core.*;
+import org.eclipse.jdt.internal.core.util.Util;
 
 /**
  * Switch and ICompilationUnit to working copy mode
@@ -36,7 +41,11 @@ public class BecomeWorkingCopyOperation extends JavaModelOperation {
 		// open the working copy now to ensure contents are that of the current state of this element
 		CompilationUnit workingCopy = getWorkingCopy();
 		JavaModelManager.getJavaModelManager().getPerWorkingCopyInfo(workingCopy, true/*create if needed*/, true/*record usage*/, this.problemRequestor);
-		workingCopy.openWhenClosed(workingCopy.createElementInfo(), true, this.progressMonitor);
+		try {
+			workingCopy.hOpen(of(IElementImplExtension.FORCE_OPEN, true), this.progressMonitor);
+		} catch (CoreException e) {
+			Util.toJavaModelException(e);
+		}
 
 		if (!workingCopy.isPrimary()) {
 			// report added java delta for a non-primary working copy

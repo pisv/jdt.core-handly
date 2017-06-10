@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -9,6 +9,12 @@
  *     IBM Corporation - initial API and implementation
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
+
+import static org.eclipse.handly.context.Contexts.EMPTY_CONTEXT;
+import static org.eclipse.handly.context.Contexts.of;
+import static org.eclipse.handly.context.Contexts.with;
+import static org.eclipse.handly.util.ToStringOptions.FORMAT_STYLE;
+import static org.eclipse.handly.util.ToStringOptions.FormatStyle.MEDIUM;
 
 import java.io.BufferedInputStream;
 import java.io.FileNotFoundException;
@@ -24,7 +30,6 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -37,6 +42,12 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.PlatformObject;
 import org.eclipse.core.runtime.jobs.ISchedulingRule;
+import org.eclipse.handly.context.Contexts;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
+import org.eclipse.handly.model.impl.Body;
+import org.eclipse.handly.model.impl.IElementImplSupport;
+import org.eclipse.handly.util.Property;
 import org.eclipse.jdt.core.IClassFile;
 import org.eclipse.jdt.core.IClasspathAttribute;
 import org.eclipse.jdt.core.IClasspathEntry;
@@ -67,9 +78,11 @@ import org.eclipse.jdt.internal.core.util.Util;
  * @see IJavaElement
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public abstract class JavaElement extends PlatformObject implements IJavaElement {
+public abstract class JavaElement extends PlatformObject implements IJavaElement, IElementImplSupport {
 //	private static final QualifiedName PROJECT_JAVADOC= new QualifiedName(JavaCore.PLUGIN_ID, "project_javadoc_location"); //$NON-NLS-1$
-
+	/**
+	 * Shared empty collection used for efficiency.
+	 */
 	private static final byte[] CLOSING_DOUBLE_QUOTE = new byte[] { 34 };
 	/* To handle the pre - HTML 5 format: <META http-equiv="Content-Type" content="text/html; charset=UTF-8">  */
 	private static final byte[] CHARSET = new byte[] { 99, 104, 97, 114, 115, 101, 116, 61 };
@@ -113,6 +126,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public static final char JEM_DELIMITER_ESCAPE = JEM_JAVAPROJECT;
 	
+	public static final Property<Boolean> SHOW_RESOLVED_INFO = Property.get(JavaElement.class.getName() + ".showResolvedInfo", Boolean.class).withDefault(false); //$NON-NLS-1$
 
 	/**
 	 * This element's parent, or <code>null</code> if this
@@ -121,7 +135,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	protected JavaElement parent;
 
 	protected static final JavaElement[] NO_ELEMENTS = new JavaElement[0];
-	protected static final Object NO_INFO = new Object();
 	
 	private static Set<String> invalidURLs = null;
 	private static Set<String> validURLs = null;
@@ -142,17 +155,9 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	/**
 	 * @see IOpenable
 	 */
-	public void close() throws JavaModelException {
-		JavaModelManager.getJavaModelManager().removeInfoAndChildren(this);
+	public final void close() {
+		hClose();
 	}
-	/**
-	 * This element is being closed.  Do any necessary cleanup.
-	 */
-	protected abstract void closing(Object info) throws JavaModelException;
-	/*
-	 * Returns a new element info for this element.
-	 */
-	protected abstract Object createElementInfo();
 	/**
 	 * Returns true if this handle represents the same Java element
 	 * as the given handle. By default, two handles represent the same
@@ -165,16 +170,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * @see Object#equals
 	 */
 	public boolean equals(Object o) {
-
-		if (this == o) return true;
-
-		// Java model parent is null
-		if (this.parent == null) return super.equals(o);
-
-		// assume instanceof check is done in subclass
-		JavaElement other = (JavaElement) o;
-		return getElementName().equals(other.getElementName()) &&
-				this.parent.equals(other.parent);
+		return hDefaultEquals(o);
 	}
 	/**
 	 * @see #JEM_DELIMITER_ESCAPE
@@ -214,15 +210,8 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	/**
 	 * @see IJavaElement
 	 */
-	public boolean exists() {
-
-		try {
-			getElementInfo();
-			return true;
-		} catch (JavaModelException e) {
-			// element doesn't exist: return false
-		}
-		return false;
+	public final boolean exists() {
+		return hExists();
 	}
 
 	/**
@@ -232,11 +221,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public ASTNode findNode(CompilationUnit ast) {
 		return null; // works only inside a compilation unit
 	}
-	/**
-	 * Generates the element infos for this element, its ancestors (if they are not opened) and its children (if it is an Openable).
-	 * Puts the newly created element info in the given map.
-	 */
-	protected abstract void generateInfos(Object info, HashMap newElements, IProgressMonitor pm) throws JavaModelException;
 
 	/**
 	 * @see IJavaElement
@@ -253,13 +237,17 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	/**
 	 * @see IParent
 	 */
-	public IJavaElement[] getChildren() throws JavaModelException {
-		Object elementInfo = getElementInfo();
-		if (elementInfo instanceof JavaElementInfo) {
-			return ((JavaElementInfo)elementInfo).getChildren();
-		} else {
-			return NO_ELEMENTS;
+	public final IJavaElement[] getChildren() throws JavaModelException {
+		IElement[] src;
+		try {
+			src = hChildren();
+		} catch (CoreException e) {
+			throw Util.toJavaModelException(e);
 		}
+		int length = src.length;
+		IJavaElement[] dest = new IJavaElement[length];
+		System.arraycopy(src, 0, dest, 0, length);
+		return dest;
 	}
 	/**
 	 * Returns a collection of (immediate) children of this node of the
@@ -268,11 +256,16 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * @param type - one of the JEM_* constants defined by JavaElement
 	 */
 	public ArrayList getChildrenOfType(int type) throws JavaModelException {
-		IJavaElement[] children = getChildren();
+		IElement[] children;
+		try {
+			children = hChildren();
+		} catch (CoreException e) {
+			throw Util.toJavaModelException(e);
+		}
 		int size = children.length;
 		ArrayList list = new ArrayList(size);
 		for (int i = 0; i < size; ++i) {
-			JavaElement elt = (JavaElement)children[i];
+			IJavaElement elt = (IJavaElement)children[i];
 			if (elt.getElementType() == type) {
 				list.add(elt);
 			}
@@ -298,7 +291,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * NOTE: BinaryType infos are NOT rooted under JavaElementInfo.
 	 * @exception JavaModelException if the element is not present or not accessible
 	 */
-	public Object getElementInfo() throws JavaModelException {
+	public final Object getElementInfo() throws JavaModelException {
 		return getElementInfo(null);
 	}
 	/**
@@ -308,12 +301,12 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * NOTE: BinaryType infos are NOT rooted under JavaElementInfo.
 	 * @exception JavaModelException if the element is not present or not accessible
 	 */
-	public Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
-
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
-		Object info = manager.getInfo(this);
-		if (info != null) return info;
-		return openWhenClosed(createElementInfo(), false, monitor);
+	public final Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
+		try {
+			return hBody(EMPTY_CONTEXT, monitor);
+		} catch (CoreException e) {
+			throw Util.toJavaModelException(e);
+		}
 	}
 	/**
 	 * @see IAdaptable
@@ -390,16 +383,14 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	/**
 	 * Return the first instance of IOpenable in the parent
 	 * hierarchy of this element.
-	 *
-	 * <p>Subclasses that are not IOpenable's must override this method.
 	 */
-	public IOpenable getOpenableParent() {
-		return (IOpenable)this.parent;
+	public final IOpenable getOpenableParent() {
+		return (IOpenable)hOpenableParent();
 	}
 	/**
 	 * @see IJavaElement
 	 */
-	public IJavaElement getParent() {
+	public final IJavaElement getParent() {
 		return this.parent;
 	}
 	/*
@@ -513,9 +504,9 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public boolean hasChildren() throws JavaModelException {
 		// if I am not open, return true to avoid opening (case of a Java project, a compilation unit or a class file).
 		// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=52474
-		Object elementInfo = JavaModelManager.getJavaModelManager().getInfo(this);
-		if (elementInfo instanceof JavaElementInfo) {
-			return ((JavaElementInfo)elementInfo).getChildren().length > 0;
+		Object body = hFindBody();
+		if (body instanceof JavaElementInfo) {
+			return ((JavaElementInfo)body).getChildren().length > 0;
 		} else {
 			return true;
 		}
@@ -528,8 +519,96 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * override this method.
 	 */
 	public int hashCode() {
-		if (this.parent == null) return super.hashCode();
-		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
+		return hDefaultHashCode();
+	}
+	@Override
+	public boolean hCanEqual(Object obj) {
+		if (!(obj instanceof JavaElement)) return false;
+		return getElementType() == ((JavaElement) obj).getElementType();
+	}
+	@Override
+	public IElement[] hChildren(Object body) {
+		if (body instanceof JavaElementInfo) {
+			IJavaElement[] children = ((JavaElementInfo) body).getChildren();
+			IElement[] result = new IElement[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		else {
+			return Body.NO_CHILDREN;
+		}
+	}
+	@Override
+	public final CoreException hDoesNotExistException() {
+		return newNotPresentException();
+	}
+	@Override
+	public final JavaElementManager hElementManager() {
+		return (JavaElementManager) IElementImplSupport.super.hElementManager();
+	}
+	@Override
+	public final JavaModelManager hModelManager() {
+		return JavaModelManager.getJavaModelManager();
+	}
+	@Override
+	public final String hName() {
+		return getElementName();
+	}
+	@Override
+	public final IElement hParent() {
+		return this.parent;
+	}
+	@Override
+	public void hRemove(IContext context) {
+		synchronized (hElementManager()) {
+			Object body = hPeekAtBody();
+			if (body != null) {
+				boolean wasVerbose = false;
+				try {
+					if (JavaModelCache.VERBOSE) {
+						String elementType;
+						switch (getElementType()) {
+							case IJavaElement.JAVA_PROJECT:
+								elementType = "project"; //$NON-NLS-1$
+								break;
+							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
+								elementType = "root"; //$NON-NLS-1$
+								break;
+							case IJavaElement.PACKAGE_FRAGMENT:
+								elementType = "package"; //$NON-NLS-1$
+								break;
+							case IJavaElement.CLASS_FILE:
+								elementType = "class file"; //$NON-NLS-1$
+								break;
+							case IJavaElement.COMPILATION_UNIT:
+								elementType = "compilation unit"; //$NON-NLS-1$
+								break;
+							default:
+								elementType = "element"; //$NON-NLS-1$
+						}
+						System.out.println(
+								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+						wasVerbose = true;
+						JavaModelCache.VERBOSE = false;
+					}
+					IElementImplSupport.super.hRemove(context);
+					if (wasVerbose) {
+						System.out.println(hElementManager().cacheToString("-> ")); //$NON-NLS-1$
+					}
+				} finally {
+					JavaModelCache.VERBOSE = wasVerbose;
+				}
+			}
+		}
+	}
+	@Override
+	public final IResource hResource() {
+		return getResource();
+	}
+	@Override
+	public void hToStringAncestors(StringBuilder builder, IContext context) {
+		IElementImplSupport.super.hToStringAncestors(builder,
+			with(of(SHOW_RESOLVED_INFO, false), context));
 	}
 	/**
 	 * Returns true if this element is an ancestor of the given element,
@@ -567,38 +646,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		else
 			return new JavaModelException(new JavaModelStatus(status.getSeverity(), status.getCode(), status.getMessage()));
 	}
-	/*
-	 * Opens an <code>Openable</code> that is known to be closed (no check for <code>isOpen()</code>).
-	 * Returns the created element info.
-	 */
-	protected Object openWhenClosed(Object info, boolean forceAdd, IProgressMonitor monitor) throws JavaModelException {
-		JavaModelManager manager = JavaModelManager.getJavaModelManager();
-		boolean hadTemporaryCache = manager.hasTemporaryCache();
-		try {
-			HashMap newElements = manager.getTemporaryCache();
-			generateInfos(info, newElements, monitor);
-			if (info == null) {
-				info = newElements.get(this);
-			}
-			if (info == null) { // a source ref element could not be opened
-				// close the buffer that was opened for the openable parent
-			    // close only the openable's buffer (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=62854)
-			    Openable openable = (Openable) getOpenable();
-			    if (newElements.containsKey(openable)) {
-			        openable.closeBuffer();
-			    }
-				throw newNotPresentException();
-			}
-			if (!hadTemporaryCache) {
-				info = manager.putInfos(this, info, forceAdd, newElements);
-			}
-		} finally {
-			if (!hadTemporaryCache) {
-				manager.resetTemporaryCache();
-			}
-		}
-		return info;
-	}
 	/**
 	 */
 	public String readableName() {
@@ -610,100 +657,31 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public JavaElement unresolved() {
 		return this;
 	}
-	protected String tabString(int tab) {
-		StringBuffer buffer = new StringBuffer();
-		for (int i = tab; i > 0; i--)
-			buffer.append("  "); //$NON-NLS-1$
-		return buffer.toString();
-	}
 	/**
 	 * Debugging purposes
 	 */
-	public String toDebugString() {
-		StringBuffer buffer = new StringBuffer();
-		this.toStringInfo(0, buffer, NO_INFO, true/*show resolved info*/);
-		return buffer.toString();
+	public final String toDebugString() {
+		StringBuilder builder = new StringBuilder();
+		hToStringBody(builder, NO_BODY, Contexts.EMPTY_CONTEXT);
+		return builder.toString();
 	}
 	/**
 	 *  Debugging purposes
 	 */
-	public String toString() {
-		StringBuffer buffer = new StringBuffer();
-		toString(0, buffer);
-		return buffer.toString();
+	public final String toString() {
+		return hToString(EMPTY_CONTEXT);
 	}
 	/**
 	 *  Debugging purposes
 	 */
-	protected void toString(int tab, StringBuffer buffer) {
-		Object info = this.toStringInfo(tab, buffer);
-		if (tab == 0) {
-			toStringAncestors(buffer);
-		}
-		toStringChildren(tab, buffer, info);
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	public String toStringWithAncestors() {
+	public final String toStringWithAncestors() {
 		return toStringWithAncestors(true/*show resolved info*/);
 	}
-		/**
-	 *  Debugging purposes
-	 */
-	public String toStringWithAncestors(boolean showResolvedInfo) {
-		StringBuffer buffer = new StringBuffer();
-		this.toStringInfo(0, buffer, NO_INFO, showResolvedInfo);
-		toStringAncestors(buffer);
-		return buffer.toString();
-	}
 	/**
 	 *  Debugging purposes
 	 */
-	protected void toStringAncestors(StringBuffer buffer) {
-		JavaElement parentElement = (JavaElement)getParent();
-		if (parentElement != null && parentElement.getParent() != null) {
-			buffer.append(" [in "); //$NON-NLS-1$
-			parentElement.toStringInfo(0, buffer, NO_INFO, false/*don't show resolved info*/);
-			parentElement.toStringAncestors(buffer);
-			buffer.append("]"); //$NON-NLS-1$
-		}
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	protected void toStringChildren(int tab, StringBuffer buffer, Object info) {
-		if (info == null || !(info instanceof JavaElementInfo)) return;
-		IJavaElement[] children = ((JavaElementInfo)info).getChildren();
-		for (int i = 0; i < children.length; i++) {
-			buffer.append("\n"); //$NON-NLS-1$
-			((JavaElement)children[i]).toString(tab + 1, buffer);
-		}
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	public Object toStringInfo(int tab, StringBuffer buffer) {
-		Object info = JavaModelManager.getJavaModelManager().peekAtInfo(this);
-		this.toStringInfo(tab, buffer, info, true/*show resolved info*/);
-		return info;
-	}
-	/**
-	 *  Debugging purposes
-	 * @param showResolvedInfo TODO
-	 */
-	protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-		buffer.append(tabString(tab));
-		toStringName(buffer);
-		if (info == null) {
-			buffer.append(" (not open)"); //$NON-NLS-1$
-		}
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	protected void toStringName(StringBuffer buffer) {
-		buffer.append(getElementName());
+	public final String toStringWithAncestors(boolean showResolvedInfo) {
+		return hToString(with(of(FORMAT_STYLE, MEDIUM), of(SHOW_RESOLVED_INFO, showResolvedInfo)));
 	}
 
 	protected URL getJavadocBaseLocation() throws JavaModelException {

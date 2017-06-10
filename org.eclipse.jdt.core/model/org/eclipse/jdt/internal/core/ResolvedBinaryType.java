@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2004, 2015 IBM Corporation and others.
+ * Copyright (c) 2004, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,6 +11,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.JavaModelException;
 
 /**
@@ -45,23 +46,21 @@ public class ResolvedBinaryType extends BinaryType {
 		return this.uniqueKey;
 	}
 
+	@Override
+	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+		super.hToStringBody(builder, body, context);
+		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
+			builder.append(" {key="); //$NON-NLS-1$
+			builder.append(this.getKey());
+			builder.append("}"); //$NON-NLS-1$
+		}
+	}
+
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.internal.core.BinaryType#isResolved()
 	 */
 	public boolean isResolved() {
 		return true;
-	}
-
-	/**
-	 * @private Debugging purposes
-	 */
-	protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-		super.toStringInfo(tab, buffer, info, showResolvedInfo);
-		if (showResolvedInfo) {
-			buffer.append(" {key="); //$NON-NLS-1$
-			buffer.append(this.uniqueKey);
-			buffer.append("}"); //$NON-NLS-1$
-		}
 	}
 
 	public JavaElement unresolved() {

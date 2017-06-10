@@ -2820,7 +2820,7 @@ public void testDotDotLibraryEntry7() throws Exception {
 			"Unexpected project content",
 			"P\n" + 
 			"  <project root>\n" + 
-			"    <default> (...)\n" + 
+			"    <default> (...)\n" +
 			"  "+ getWorkspacePath() + "external.jar\n" + 
 			"    <default> (...)",
 			p

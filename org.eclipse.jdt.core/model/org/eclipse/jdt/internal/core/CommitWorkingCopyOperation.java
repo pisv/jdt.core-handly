@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2009 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -167,11 +167,11 @@ public class CommitWorkingCopyOperation extends JavaModelOperation {
 
 			// build the deltas
 			if (deltaBuilder != null) {
-				deltaBuilder.buildDeltas();
+				deltaBuilder.buildDelta();
 
 				// add the deltas to the list of deltas created during this operation
-				if (deltaBuilder.delta != null) {
-					addDelta(deltaBuilder.delta);
+				if (!deltaBuilder.isEmptyDelta()) {
+					addDelta(deltaBuilder.getDelta());
 				}
 			}
 			worked(1);

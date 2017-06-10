@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2010 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,6 +11,7 @@
 package org.eclipse.jdt.internal.core;
 
 import org.eclipse.core.runtime.Assert;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 
 /**
@@ -31,10 +32,6 @@ protected ImportDeclaration(ImportContainer parent, String name, boolean isOnDem
 	super(parent);
 	this.name = name;
 	this.isOnDemand = isOnDemand;
-}
-public boolean equals(Object o) {
-	if (!(o instanceof ImportDeclaration)) return false;
-	return super.equals(o);
 }
 public String getElementName() {
 	if (this.isOnDemand)
@@ -89,6 +86,11 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	if (checkOwner && cu.isPrimary()) return this;
 	return cu.getImport(getElementName());
 }
+@Override
+public void hToStringName(StringBuilder builder, IContext context) {
+	builder.append("import "); //$NON-NLS-1$
+	super.hToStringName(builder, context);
+}
 /**
  * Returns true if the import is on-demand (ends with ".*")
  */
@@ -100,16 +102,5 @@ public boolean isOnDemand() {
 public String readableName() {
 
 	return null;
-}
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	buffer.append("import "); //$NON-NLS-1$
-	toStringName(buffer);
-	if (info == null) {
-		buffer.append(" (not open)"); //$NON-NLS-1$
-	}
 }
 }

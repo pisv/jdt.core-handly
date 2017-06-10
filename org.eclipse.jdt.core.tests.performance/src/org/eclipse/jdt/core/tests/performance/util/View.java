@@ -31,11 +31,11 @@ public class View {
 public static void main(String[] args) {
 
 	Variations variations = PerformanceTestPlugin.getVariations();
-	variations.put("config", "eclipseperflnx1_R3.3"); //$NON-NLS-1$//$NON-NLS-2$
-	variations.put("build", "I2007%"); //$NON-NLS-1$//$NON-NLS-2$
-	variations.put("jvm", "sun"); //$NON-NLS-1$//$NON-NLS-2$
+//	variations.put("config", "eclipseperflnx1_R3.3"); //$NON-NLS-1$//$NON-NLS-2$
+	variations.put("build", "%"); //$NON-NLS-1$//$NON-NLS-2$
+//	variations.put("jvm", "sun"); //$NON-NLS-1$//$NON-NLS-2$
 
-	String scenarioPattern = "%testFullBuildProject%"; //$NON-NLS-1$
+	String scenarioPattern = "%"; //$NON-NLS-1$
 
 	String seriesKey = PerformanceTestPlugin.BUILD;
 

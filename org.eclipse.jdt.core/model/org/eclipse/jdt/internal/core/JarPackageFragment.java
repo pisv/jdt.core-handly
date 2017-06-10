@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -16,9 +16,11 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IClassFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJarEntryResource;
@@ -39,26 +41,6 @@ class JarPackageFragment extends PackageFragment {
  */
 protected JarPackageFragment(PackageFragmentRoot root, String[] names) {
 	super(root, names);
-}
-/**
- * @see Openable
- */
-protected boolean buildStructure(OpenableElementInfo info, IProgressMonitor pm, Map newElements, IResource underlyingResource) throws JavaModelException {
-	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
-	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root.getElementInfo();
-	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
-	if (entries == null)
-		throw newNotPresentException();
-	JarPackageFragmentInfo fragInfo = (JarPackageFragmentInfo) info;
-
-	// compute children
-	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
-
-	// compute non-Java resources
-	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
-
-	newElements.put(this, fragInfo);
-	return true;
 }
 /**
  * Compute the children of this package fragment. Children of jar package fragments
@@ -157,12 +139,6 @@ public ICompilationUnit createCompilationUnit(String cuName, String contents, bo
 	throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.READ_ONLY, this));
 }
 /**
- * @see JavaElement
- */
-protected Object createElementInfo() {
-	return new JarPackageFragmentInfo();
-}
-/**
  * @see org.eclipse.jdt.core.IPackageFragment
  */
 public IClassFile[] getClassFiles() throws JavaModelException {
@@ -196,6 +172,25 @@ public Object[] getNonJavaResources() throws JavaModelException {
 	} else {
 		return storedNonJavaResources();
 	}
+}
+@Override
+public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
+	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root.hBody();
+	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
+	if (entries == null)
+		throw newNotPresentException();
+	JarPackageFragmentInfo fragInfo = new JarPackageFragmentInfo();
+
+	// compute children
+	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
+
+	// compute non-Java resources
+	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
+
+	fragInfo.setIsStructureKnown(true);
+
+	context.get(NEW_ELEMENTS).put(this, fragInfo);
 }
 protected boolean internalIsValidPackageName() {
 	return true;

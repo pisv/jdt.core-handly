@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2010 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -14,6 +14,7 @@ import java.io.File;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.JavaModelException;
@@ -98,6 +99,17 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 	public int hashCode() {
 		return this.externalPath.hashCode();
 	}
+
+	@Override
+	public boolean hCanEqual(Object obj) {
+		return obj instanceof ExternalPackageFragmentRoot;
+	}
+
+	@Override
+	public void hToStringAncestors(StringBuilder builder, IContext context) {
+		// don't show project as it is irrelevant for external folders.
+	}
+
 	/**
 	 * @see IPackageFragmentRoot
 	 */
@@ -121,9 +133,5 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 		if (file == null)
 			return false;
 		return file.exists();
-	}
-
-	protected void toStringAncestors(StringBuffer buffer) {
-		// don't show project as it is irrelevant for external folders.
 	}
 }

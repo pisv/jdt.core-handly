@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2004, 2015 IBM Corporation and others.
+ * Copyright (c) 2004, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,6 +12,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 
@@ -24,11 +25,6 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 	public TypeParameter(JavaElement parent, String name) {
 		super(parent);
 		this.name = name;
-	}
-
-	public boolean equals(Object o) {
-		if (!(o instanceof TypeParameter)) return false;
-		return super.equals(o);
 	}
 
 	public String[] getBounds() throws JavaModelException {
@@ -141,9 +137,10 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 		return this.getDeclaringMember().getTypeRoot();
 	}
 
-	protected void toStringName(StringBuffer buffer) {
-		buffer.append('<');
-		buffer.append(getElementName());
-		buffer.append('>');
+	@Override
+	public void hToStringName(StringBuilder builder, IContext context) {
+		builder.append('<');
+		builder.append(getElementName());
+		builder.append('>');
 	}
 }

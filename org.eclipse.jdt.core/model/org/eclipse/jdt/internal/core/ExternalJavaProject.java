@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2009 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,7 +12,7 @@ package org.eclipse.jdt.internal.core;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.IStatus;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.JavaCore;
@@ -38,16 +38,27 @@ public class ExternalJavaProject extends JavaProject {
 		return this == o;
 	}
 
-	public boolean exists() {
-		// external project never exists
-		return false;
-	}
-
 	public String getOption(String optionName, boolean inheritJavaCoreOptions) {
 		if (JavaCore.COMPILER_PB_FORBIDDEN_REFERENCE.equals(optionName)
 				|| JavaCore.COMPILER_PB_DISCOURAGED_REFERENCE.equals(optionName))
 			return JavaCore.IGNORE;
 		return super.getOption(optionName, inheritJavaCoreOptions);
+	}
+
+	@Override
+	public boolean hCanEqual(Object obj) {
+		return obj instanceof ExternalJavaProject;
+	}
+
+	@Override
+	public boolean hExists() {
+		// external project never exists
+		return false;
+	}
+
+	@Override
+	public void hValidateExistence(IContext context) {
+		// allow opening of external project
 	}
 
 	public boolean isOnClasspath(IJavaElement element) {
@@ -58,10 +69,5 @@ public class ExternalJavaProject extends JavaProject {
 	public boolean isOnClasspath(IResource resource) {
 		// since project is external, no resource is on classpath (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=61013#c16)
 		return false;
-	}
-
-	protected IStatus validateExistence(IResource underlyingResource) {
-		// allow opening of external project
-		return JavaModelStatus.VERIFIED_OK;
 	}
 }

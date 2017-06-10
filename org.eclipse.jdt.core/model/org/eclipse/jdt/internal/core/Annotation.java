@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2009 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,6 +10,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.IAnnotation;
 import org.eclipse.jdt.core.IClassFile;
 import org.eclipse.jdt.core.IMember;
@@ -133,8 +134,9 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 		return result;
 	}
 
-	protected void toStringName(StringBuffer buffer) {
-		buffer.append('@');
-		buffer.append(getElementName());
+	@Override
+	public void hToStringName(StringBuilder builder, IContext context) {
+		builder.append('@');
+		builder.append(getElementName());
 	}
 }

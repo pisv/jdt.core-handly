@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -12,11 +12,9 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
-import java.util.HashMap;
-
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
@@ -96,15 +94,6 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 		}
 	}
 
-	protected void closing(Object info) {
-		// a local variable has no info
-	}
-
-	protected Object createElementInfo() {
-		// a local variable has no info
-		return null;
-	}
-
 	public boolean equals(Object o) {
 		if (!(o instanceof LocalVariable)) return false;
 		LocalVariable other = (LocalVariable)o;
@@ -114,14 +103,6 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 			&& this.nameStart == other.nameStart
 			&& this.nameEnd == other.nameEnd
 			&& super.equals(o);
-	}
-
-	public boolean exists() {
-		return this.parent.exists(); // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=46192
-	}
-
-	protected void generateInfos(Object info, HashMap newElements, IProgressMonitor pm) {
-		// a local variable has no info
 	}
 
 	public IAnnotation getAnnotation(String annotationName) {
@@ -167,7 +148,8 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 			public ISourceRange getSourceRange() throws JavaModelException {
 				return new SourceRange(sourceStart, sourceEnd - sourceStart + 1);
 			}
-			public boolean exists() {
+			@Override
+			public boolean hExists() {
 				return this.parent.exists();
 			}
 		}
@@ -448,7 +430,21 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 	public int hashCode() {
 		return Util.combineHashCodes(this.parent.hashCode(), this.nameStart);
 	}
-	
+
+	@Override
+	public boolean hExists() {
+		return this.parent.exists(); // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=46192
+	}
+
+	@Override
+	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+		if (body != NO_BODY) {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+		}
+		hToStringName(builder, context);
+	}
+
 	/**
 	 * {@inheritDoc}
 	 * @since 3.7
@@ -485,15 +481,6 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 			return buf.toString();
 		}
 		return null;
-	}
-
-	protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-		buffer.append(tabString(tab));
-		if (info != NO_INFO) {
-			buffer.append(Signature.toString(getTypeSignature()));
-			buffer.append(" "); //$NON-NLS-1$
-		}
-		toStringName(buffer);
 	}
 
 }

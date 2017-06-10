@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -15,6 +15,9 @@ package org.eclipse.jdt.internal.core;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.eclipse.handly.model.IElement;
+import org.eclipse.handly.model.impl.ElementCache;
+import org.eclipse.handly.model.impl.IBodyCache;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.internal.core.util.LRUCache;
 import org.eclipse.jdt.internal.core.util.Util;
@@ -23,7 +26,7 @@ import org.eclipse.jdt.internal.core.util.Util;
  * The cache of java elements to their respective info.
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class JavaModelCache {
+public class JavaModelCache implements IBodyCache {
 	public static boolean VERBOSE = false;
 
 	public static final int DEFAULT_PROJECT_SIZE = 5;  // average 25552 bytes per project.
@@ -116,10 +119,9 @@ private double getRatioForProperty(String propertyName) {
 	return 1.0;
 }
 
-/**
- *  Returns the info for the element.
- */
-public Object getInfo(IJavaElement element) {
+@Override
+public Object get(IElement e) {
+	IJavaElement element = (IJavaElement) e;
 	switch (element.getElementType()) {
 		case IJavaElement.JAVA_MODEL:
 			return this.modelInfo;
@@ -154,12 +156,12 @@ public IJavaElement getExistingElement(IJavaElement element) {
 		case IJavaElement.JAVA_PROJECT:
 			return element; // projectCache is a Hashtable and Hashtables don't support getKey(...)
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-			return (IJavaElement) this.rootCache.getKey(element);
+			return (IJavaElement) this.rootCache.getKey((IElement) element);
 		case IJavaElement.PACKAGE_FRAGMENT:
-			return (IJavaElement) this.pkgCache.getKey(element);
+			return (IJavaElement) this.pkgCache.getKey((IElement) element);
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
-			return (IJavaElement) this.openableCache.getKey(element);
+			return (IJavaElement) this.openableCache.getKey((IElement) element);
 		case IJavaElement.TYPE:
 			return element; // jarTypeCache or childrenCache are Hashtables and Hashtables don't support getKey(...)
 		default:
@@ -177,11 +179,9 @@ protected double getMemoryRatio() {
 	return this.memoryRatio;
 }
 
-/**
- *  Returns the info for this element without
- *  disturbing the cache ordering.
- */
-protected Object peekAtInfo(IJavaElement element) {
+@Override
+public Object peek(IElement e) {
+	IJavaElement element = (IJavaElement) e;
 	switch (element.getElementType()) {
 		case IJavaElement.JAVA_MODEL:
 			return this.modelInfo;
@@ -205,53 +205,77 @@ protected Object peekAtInfo(IJavaElement element) {
 	}
 }
 
-/**
- * Remember the info for the element.
- */
-protected void putInfo(IJavaElement element, Object info) {
+@Override
+public void put(IElement e, Object body) {
+	IJavaElement element = (IJavaElement) e;
 	switch (element.getElementType()) {
 		case IJavaElement.JAVA_MODEL:
-			this.modelInfo = info;
+			this.modelInfo = body;
 			break;
 		case IJavaElement.JAVA_PROJECT:
-			this.projectCache.put(element, info);
-			this.rootCache.ensureSpaceLimit(info, element);
+			this.projectCache.put(e, body);
+			this.rootCache.ensureSpaceLimit(body, e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-			this.rootCache.put(element, info);
-			this.pkgCache.ensureSpaceLimit(info, element);
+			this.rootCache.put(e, body);
+			this.pkgCache.ensureSpaceLimit(body, e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT:
-			this.pkgCache.put(element, info);
-			this.openableCache.ensureSpaceLimit(info, element);
+			this.pkgCache.put(e, body);
+			this.openableCache.ensureSpaceLimit(body, e);
 			break;
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
-			this.openableCache.put(element, info);
+			this.openableCache.put(e, body);
 			break;
 		default:
-			this.childrenCache.put(element, info);
+			this.childrenCache.put(e, body);
 	}
 }
-/**
- * Removes the info of the element from the cache.
- */
-protected void removeInfo(JavaElement element) {
+@Override
+public void putAll(Map<? extends IElement, Object> elementBodies) {
+	// Need to put any JarPackageFragmentRoot in first.
+	// This is due to the way the LRU cache flushes entries.
+	// When a JarPackageFragment is flushed from the LRU cache, the entire
+	// jar is flushed by removing the JarPackageFragmentRoot and all of its
+	// children (see ElementCache.close()). If we flush the JarPackageFragment
+	// when its JarPackageFragmentRoot is not in the cache and the root is about to be
+	// added (during the 'while' loop), we will end up in an inconsistent state.
+	// Subsequent resolution against package in the jar would fail as a result.
+	// https://bugs.eclipse.org/bugs/show_bug.cgi?id=102422
+	// (theodora)
+	Map<IElement, Object> others = new HashMap<>(elementBodies.size());
+	for(Map.Entry<? extends IElement, Object> entry : elementBodies.entrySet()) {
+		IElement element = entry.getKey();
+		Object body = entry.getValue();
+		if (element instanceof JarPackageFragmentRoot)
+			put(element, body);
+		else
+			others.put(element, body);
+	}
+
+	for(Map.Entry<? extends IElement, Object> entry : others.entrySet()) {
+		put(entry.getKey(), entry.getValue());
+	}
+}
+@Override
+public void remove(IElement e) {
+	IJavaElement element = (IJavaElement) e;
 	switch (element.getElementType()) {
 		case IJavaElement.JAVA_MODEL:
 			this.modelInfo = null;
 			break;
 		case IJavaElement.JAVA_PROJECT:
 			this.projectCache.remove(element);
-			this.rootCache.resetSpaceLimit((int) (DEFAULT_ROOT_SIZE * getMemoryRatio()), element);
+			this.rootCache.resetSpaceLimit((int) (DEFAULT_ROOT_SIZE * getMemoryRatio()), e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
 			this.rootCache.remove(element);
-			this.pkgCache.resetSpaceLimit((int) (DEFAULT_PKG_SIZE * getMemoryRatio()), element);
+			this.pkgCache.resetSpaceLimit((int) (DEFAULT_PKG_SIZE * getMemoryRatio()), e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT:
 			this.pkgCache.remove(element);
-			this.openableCache.resetSpaceLimit((int) (DEFAULT_OPENABLE_SIZE * getMemoryRatio() * getOpenableRatio()), element);
+			this.openableCache.resetSpaceLimit((int) (DEFAULT_OPENABLE_SIZE * getMemoryRatio() * getOpenableRatio()), e);
 			break;
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
@@ -268,22 +292,22 @@ protected void removeFromJarTypeCache(BinaryType type) {
 	this.jarTypeCache.flush(type);
 }
 public String toString() {
-	return toStringFillingRation(""); //$NON-NLS-1$
+	return toStringFillingRatio(""); //$NON-NLS-1$
 }
-public String toStringFillingRation(String prefix) {
+public String toStringFillingRatio(String prefix) {
 	StringBuffer buffer = new StringBuffer();
 	buffer.append(prefix);
 	buffer.append("Project cache: "); //$NON-NLS-1$
 	buffer.append(this.projectCache.size());
 	buffer.append(" projects\n"); //$NON-NLS-1$
 	buffer.append(prefix);
-	buffer.append(this.rootCache.toStringFillingRation("Root cache")); //$NON-NLS-1$
+	buffer.append(this.rootCache.toStringFillingRatio("Root cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
-	buffer.append(this.pkgCache.toStringFillingRation("Package cache")); //$NON-NLS-1$
+	buffer.append(this.pkgCache.toStringFillingRatio("Package cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
-	buffer.append(this.openableCache.toStringFillingRation("Openable cache")); //$NON-NLS-1$
+	buffer.append(this.openableCache.toStringFillingRatio("Openable cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
 	buffer.append(this.jarTypeCache.toStringFillingRation("Jar type cache")); //$NON-NLS-1$

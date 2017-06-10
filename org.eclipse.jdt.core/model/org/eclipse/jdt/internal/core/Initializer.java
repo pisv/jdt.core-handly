@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2008 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,6 +11,7 @@
 package org.eclipse.jdt.internal.core;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.IInitializer;
@@ -18,7 +19,6 @@ import org.eclipse.jdt.core.IJavaModelStatusConstants;
 import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
-import org.eclipse.jdt.internal.core.util.Util;
 
 /**
  * @see IInitializer
@@ -32,10 +32,6 @@ protected Initializer(JavaElement parent, int count) {
 	if (count <= 0)
 		throw new IllegalArgumentException();
 	this.occurrenceCount = count;
-}
-public boolean equals(Object o) {
-	if (!(o instanceof Initializer)) return false;
-	return super.equals(o);
 }
 /**
  * @see IJavaElement
@@ -57,8 +53,29 @@ protected void getHandleMemento(StringBuffer buff) {
 protected char getHandleMementoDelimiter() {
 	return JavaElement.JEM_INITIALIZER;
 }
-public int hashCode() {
-	return Util.combineHashCodes(this.parent.hashCode(), this.occurrenceCount);
+@Override
+public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		builder.append("<initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append("> (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		builder.append("<initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
+	} else {
+		try {
+			builder.append("<"); //$NON-NLS-1$
+			if (Flags.isStatic(getFlags())) {
+				builder.append("static "); //$NON-NLS-1$
+			}
+		builder.append("initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
 }
 /**
  */
@@ -88,32 +105,5 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	}
 	IJavaElement primaryParent = this.parent.getPrimaryElement(false);
 	return ((IType)primaryParent).getInitializer(this.occurrenceCount);
-}
-/**
- * @private Debugging purposes
- */
-protected void toStringInfo(int tab, StringBuffer buffer, Object info, boolean showResolvedInfo) {
-	buffer.append(tabString(tab));
-	if (info == null) {
-		buffer.append("<initializer #"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-		buffer.append("> (not open)"); //$NON-NLS-1$
-	} else if (info == NO_INFO) {
-		buffer.append("<initializer #"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-		buffer.append(">"); //$NON-NLS-1$
-	} else {
-		try {
-			buffer.append("<"); //$NON-NLS-1$
-			if (Flags.isStatic(getFlags())) {
-				buffer.append("static "); //$NON-NLS-1$
-			}
-		buffer.append("initializer #"); //$NON-NLS-1$
-		buffer.append(this.occurrenceCount);
-		buffer.append(">"); //$NON-NLS-1$
-		} catch (JavaModelException e) {
-			buffer.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 }
