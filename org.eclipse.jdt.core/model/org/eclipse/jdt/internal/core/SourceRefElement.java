@@ -26,6 +26,7 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.internal.core.util.DOMFinder;
 import org.eclipse.jdt.internal.core.util.MementoTokenizer;
 import org.eclipse.jdt.internal.core.util.Messages;
+import org.eclipse.jdt.internal.core.util.Util;
 
 /**
  * Abstract class for Java elements which implement ISourceReference.
@@ -69,6 +70,11 @@ public void copy(IJavaElement container, IJavaElement sibling, String rename, bo
 public void delete(boolean force, IProgressMonitor monitor) throws JavaModelException {
 	IJavaElement[] elements = new IJavaElement[] {this};
 	getJavaModel().delete(elements, force, monitor);
+}
+public boolean equals(Object o) {
+	if (!(o instanceof SourceRefElement)) return false;
+	return this.occurrenceCount == ((SourceRefElement)o).occurrenceCount &&
+			super.equals(o);
 }
 /**
  * Returns the <code>ASTNode</code> that corresponds to this <code>JavaElement</code>
@@ -186,6 +192,9 @@ public IResource getUnderlyingResource() throws JavaModelException {
  */
 public boolean hasChildren() throws JavaModelException {
 	return getChildren().length > 0;
+}
+public int hashCode() {
+	return Util.combineHashCodes(super.hashCode(), this.occurrenceCount);
 }
 @Override
 public void hIncrementOccurrenceCount() {

@@ -170,7 +170,17 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * @see Object#equals
 	 */
 	public boolean equals(Object o) {
-		return hDefaultEquals(o);
+
+		if (this == o)
+			return true;
+
+		if (!(o instanceof JavaElement))
+			return false;
+		JavaElement other = (JavaElement) o;
+		if (!other.hCanEqual(this))
+			return false;
+		return getElementName().equals(other.getElementName()) &&
+				this.parent.equals(other.parent);
 	}
 	/**
 	 * @see #JEM_DELIMITER_ESCAPE
@@ -519,7 +529,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * override this method.
 	 */
 	public int hashCode() {
-		return hDefaultHashCode();
+		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
 	}
 	@Override
 	public boolean hCanEqual(Object obj) {
@@ -558,49 +568,49 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public final IElement hParent() {
 		return this.parent;
 	}
-	@Override
-	public void hRemove(IContext context) {
-		synchronized (hElementManager()) {
-			Object body = hPeekAtBody();
-			if (body != null) {
-				boolean wasVerbose = false;
-				try {
-					if (JavaModelCache.VERBOSE) {
-						String elementType;
-						switch (getElementType()) {
-							case IJavaElement.JAVA_PROJECT:
-								elementType = "project"; //$NON-NLS-1$
-								break;
-							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-								elementType = "root"; //$NON-NLS-1$
-								break;
-							case IJavaElement.PACKAGE_FRAGMENT:
-								elementType = "package"; //$NON-NLS-1$
-								break;
-							case IJavaElement.CLASS_FILE:
-								elementType = "class file"; //$NON-NLS-1$
-								break;
-							case IJavaElement.COMPILATION_UNIT:
-								elementType = "compilation unit"; //$NON-NLS-1$
-								break;
-							default:
-								elementType = "element"; //$NON-NLS-1$
-						}
-						System.out.println(
-								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
-						wasVerbose = true;
-						JavaModelCache.VERBOSE = false;
-					}
-					IElementImplSupport.super.hRemove(context);
-					if (wasVerbose) {
-						System.out.println(hElementManager().cacheToString("-> ")); //$NON-NLS-1$
-					}
-				} finally {
-					JavaModelCache.VERBOSE = wasVerbose;
-				}
-			}
-		}
-	}
+//	@Override
+//	public void hRemove(IContext context) {
+//		synchronized (hElementManager()) {
+//			Object body = hPeekAtBody();
+//			if (body != null) {
+//				boolean wasVerbose = false;
+//				try {
+//					if (JavaModelCache.VERBOSE) {
+//						String elementType;
+//						switch (getElementType()) {
+//							case IJavaElement.JAVA_PROJECT:
+//								elementType = "project"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
+//								elementType = "root"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT:
+//								elementType = "package"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.CLASS_FILE:
+//								elementType = "class file"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.COMPILATION_UNIT:
+//								elementType = "compilation unit"; //$NON-NLS-1$
+//								break;
+//							default:
+//								elementType = "element"; //$NON-NLS-1$
+//						}
+//						System.out.println(
+//								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+//						wasVerbose = true;
+//						JavaModelCache.VERBOSE = false;
+//					}
+//					IElementImplSupport.super.hRemove(context);
+//					if (wasVerbose) {
+//						System.out.println(hElementManager().cacheToString("-> ")); //$NON-NLS-1$
+//					}
+//				} finally {
+//					JavaModelCache.VERBOSE = wasVerbose;
+//				}
+//			}
+//		}
+//	}
 	@Override
 	public final IResource hResource() {
 		return getResource();

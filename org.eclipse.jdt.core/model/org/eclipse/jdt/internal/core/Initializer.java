@@ -19,6 +19,7 @@ import org.eclipse.jdt.core.IJavaModelStatusConstants;
 import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.internal.core.util.Util;
 
 /**
  * @see IInitializer
@@ -52,6 +53,9 @@ protected void getHandleMemento(StringBuffer buff) {
  */
 protected char getHandleMementoDelimiter() {
 	return JavaElement.JEM_INITIALIZER;
+}
+public int hashCode() {
+	return Util.combineHashCodes(this.parent.hashCode(), this.occurrenceCount);
 }
 @Override
 public void hToStringBody(StringBuilder builder, Object body, IContext context) {

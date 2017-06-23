@@ -244,18 +244,17 @@ public void putAll(Map<? extends IElement, Object> elementBodies) {
 	// Subsequent resolution against package in the jar would fail as a result.
 	// https://bugs.eclipse.org/bugs/show_bug.cgi?id=102422
 	// (theodora)
-	Map<IElement, Object> others = new HashMap<>(elementBodies.size());
+
 	for(Map.Entry<? extends IElement, Object> entry : elementBodies.entrySet()) {
 		IElement element = entry.getKey();
-		Object body = entry.getValue();
 		if (element instanceof JarPackageFragmentRoot)
-			put(element, body);
-		else
-			others.put(element, body);
+			put(element, entry.getValue());
 	}
 
-	for(Map.Entry<? extends IElement, Object> entry : others.entrySet()) {
-		put(entry.getKey(), entry.getValue());
+	for(Map.Entry<? extends IElement, Object> entry : elementBodies.entrySet()) {
+		IElement element = entry.getKey();
+		if (!(element instanceof JarPackageFragmentRoot))
+			put(element, entry.getValue());
 	}
 }
 @Override
