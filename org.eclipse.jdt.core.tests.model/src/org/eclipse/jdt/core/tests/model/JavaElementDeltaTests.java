@@ -1724,7 +1724,7 @@ public void testMergeResourceDeltas() throws CoreException {
 		);
 		assertDeltas(
 			"Unexpected delta",
-			"P[*]: {CHILDREN}\n" +
+			"P[*]: {CHILDREN | CONTENT}\n" +
 			"	<project root>[*]: {CHILDREN}\n" +
 			"		<default>[*]: {CHILDREN}\n" +
 			"			X.java[+]: {}\n" +

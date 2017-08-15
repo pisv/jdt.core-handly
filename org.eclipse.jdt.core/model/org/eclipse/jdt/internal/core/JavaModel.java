@@ -50,6 +50,101 @@ import org.eclipse.jdt.internal.core.util.Messages;
 public class JavaModel extends Openable implements IJavaModel, IModel {
 
 /**
+ * Helper method - returns either the linked {@link IFolder} or the {@link File} corresponding
+ * to the provided {@link IPath}. If <code>checkResourceExistence</code> is <code>false</code>,
+ * then the IFolder or File object is always returned, otherwise <code>null</code> is returned
+ * if it does not exist on the file system.
+ */
+public static Object getExternalTarget(IPath path, boolean checkResourceExistence) {
+	if (path == null)
+		return null;
+	ExternalFoldersManager externalFoldersManager = JavaModelManager.getExternalManager();
+	Object linkedFolder = externalFoldersManager.getFolder(path);
+	if (linkedFolder != null) {
+		if (checkResourceExistence) {
+			// check if external folder is present
+			File externalFile = new File(path.toOSString());
+			if (!externalFile.isDirectory()) {
+				return null;
+			}
+		}
+		return linkedFolder;
+	}
+	File externalFile = new File(path.toOSString());
+	if (!checkResourceExistence) {
+		return externalFile;
+	} else if (isExternalFile(path)) {
+		return externalFile;
+	}
+	return null;
+}
+/**
+ * Helper method - returns the {@link File} item if <code>target</code> is a file (i.e., the target
+ * returns <code>true</code> to {@link File#isFile()}. Otherwise returns <code>null</code>.
+ */
+public static File getFile(Object target) {
+	return isFile(target) ? (File) target : null;
+}
+/**
+ * Helper method - for the provided {@link IPath}, returns:
+ * <ul>
+ * <li>If the path corresponds to an internal file or folder, the {@link IResource} for that resource
+ * <li>If the path corresponds to an external folder linked through {@link ExternalFoldersManager},
+ * the {@link IFolder} for that folder
+ * <li>If the path corresponds to an external library archive, the {@link File} for that archive
+ * <li>Can return <code>null</code> if <code>checkResourceExistence</code> is <code>true</code>
+ * and the entity referred to by the path does not exist on the file system
+ * </ul>
+ * Internal items must be referred to using container-relative paths.
+ */
+public static Object getTarget(IPath path, boolean checkResourceExistence) {
+	Object target = getWorkspaceTarget(path); // Implicitly checks resource existence
+	if (target != null)
+		return target;
+	return getExternalTarget(path, checkResourceExistence);
+}
+/**
+ * Helper method - returns the {@link IResource} corresponding to the provided {@link IPath},
+ * or <code>null</code> if no such resource exists.
+ */
+public static IResource getWorkspaceTarget(IPath path) {
+	if (path == null || path.getDevice() != null)
+		return null;
+	IWorkspace workspace = ResourcesPlugin.getWorkspace();
+	if (workspace == null)
+		return null;
+	return workspace.getRoot().findMember(path);
+}
+/**
+ * Returns whether the provided path is an external file, checking and updating the
+ * JavaModelManager's external file cache.
+ */
+static private boolean isExternalFile(IPath path) {
+	if (JavaModelManager.getJavaModelManager().isExternalFile(path)) {
+		return true;
+	}
+	if (JavaModelManager.ZIP_ACCESS_VERBOSE) {
+		System.out.println("(" + Thread.currentThread() + ") [JavaModel.isExternalFile(...)] Checking existence of " + path.toString()); //$NON-NLS-1$ //$NON-NLS-2$
+	}
+	boolean isFile = path.toFile().isFile();
+	if (isFile) {
+		JavaModelManager.getJavaModelManager().addExternalFile(path);
+	}
+	return isFile;
+}
+/**
+ * Helper method - returns whether an object is a file (i.e., it returns <code>true</code>
+ * to {@link File#isFile()}.
+ */
+public static boolean isFile(Object target) {
+	if (target instanceof File) {
+		IPath path = Path.fromOSString(((File) target).getPath());
+		return isExternalFile(path);
+	}
+	return false;
+}
+
+/**
  * Constructs a new Java Model on the given workspace.
  * Note that only one instance of JavaModel handle should ever be created.
  * One should only indirect through JavaModelManager#getJavaModel() to get
@@ -59,6 +154,24 @@ public class JavaModel extends Openable implements IJavaModel, IModel {
  */
 protected JavaModel() throws Error {
 	super(null);
+}
+@Override
+public void buildStructure_(IContext context, IProgressMonitor monitor) {
+
+	// determine my children
+	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+	int length = projects.length;
+	List<IJavaProject> javaProjects = new ArrayList<>(length);
+	for (int i = 0; i < length; i++) {
+		IProject project = projects[i];
+		if (JavaProject.hasJavaNature(project)) {
+			javaProjects.add(getJavaProject(project));
+		}
+	}
+	JavaModelInfo info = new JavaModelInfo();
+	info.setChildren(javaProjects.toArray(NO_ELEMENTS));
+	info.setIsStructureKnown(true);
+	context.get(NEW_ELEMENTS).put(this, info);
 }
 /*
  * @see IJavaModel
@@ -120,7 +233,6 @@ public int getApiLevel() {
 public int getElementType() {
 	return JAVA_MODEL;
 }
-
 /*
  * @see JavaElement
  */
@@ -149,12 +261,6 @@ protected char getHandleMementoDelimiter(){
 	return 0;
 }
 /**
- * @see IJavaModel
- */
-public IJavaProject getJavaProject(String projectName) {
-	return new JavaProject(ResourcesPlugin.getWorkspace().getRoot().getProject(projectName), this);
-}
-/**
  * Returns the active Java project associated with the specified
  * resource, or <code>null</code> if no Java project yet exists
  * for the resource.
@@ -173,6 +279,13 @@ public IJavaProject getJavaProject(IResource resource) {
 		default:
 			throw new IllegalArgumentException(Messages.element_invalidResourceForProject);
 	}
+}
+
+/**
+ * @see IJavaModel
+ */
+public IJavaProject getJavaProject(String projectName) {
+	return new JavaProject(ResourcesPlugin.getWorkspace().getRoot().getProject(projectName), this);
 }
 /**
  * @see IJavaModel
@@ -196,18 +309,11 @@ public IContext getModelContext() {
 public Object[] getNonJavaResources() throws JavaModelException {
 		return ((JavaModelInfo) getElementInfo()).getNonJavaResources();
 }
-
 /*
  * @see IJavaElement
  */
 public IPath getPath() {
 	return Path.ROOT;
-}
-/*
- * @see IJavaElement
- */
-public IResource resource(PackageFragmentRoot root) {
-	return ResourcesPlugin.getWorkspace().getRoot();
 }
 /**
  * @see IOpenable
@@ -215,40 +321,16 @@ public IResource resource(PackageFragmentRoot root) {
 public IResource getUnderlyingResource() {
 	return null;
 }
+
 /**
  * Returns the workbench associated with this object.
  */
 public IWorkspace getWorkspace() {
 	return ResourcesPlugin.getWorkspace();
 }
+
 public int hashCode() {
 	return System.identityHashCode(this);
-}
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor monitor) {
-
-	// determine my children
-	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
-	int length = projects.length;
-	List<IJavaProject> javaProjects = new ArrayList<>(length);
-	for (int i = 0; i < length; i++) {
-		IProject project = projects[i];
-		if (JavaProject.hasJavaNature(project)) {
-			javaProjects.add(getJavaProject(project));
-		}
-	}
-	JavaModelInfo info = new JavaModelInfo();
-	info.setChildren(javaProjects.toArray(NO_ELEMENTS));
-	info.setIsStructureKnown(true);
-	context.get(NEW_ELEMENTS).put(this, info);
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append("Java Model"); //$NON-NLS-1$
-}
-@Override
-public void hValidateExistence(IContext context) {
-	// always exists
 }
 /**
  * @see IJavaModel
@@ -260,7 +342,6 @@ public void move(IJavaElement[] elements, IJavaElement[] containers, IJavaElemen
 		runOperation(new MoveElementsOperation(elements, containers, force), elements, siblings, renamings, monitor);
 	}
 }
-
 /**
  * @see IJavaModel#refreshExternalArchives(IJavaElement[], IProgressMonitor)
  */
@@ -268,7 +349,7 @@ public void refreshExternalArchives(IJavaElement[] elementsScope, IProgressMonit
 	if (elementsScope == null){
 		elementsScope = new IJavaElement[] { this };
 	}
-	hModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
+	getJavaModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
 }
 
 /**
@@ -284,6 +365,14 @@ public void rename(IJavaElement[] elements, IJavaElement[] destinations, String[
 
 	op.runOperation(monitor);
 }
+
+/*
+ * @see IJavaElement
+ */
+public IResource resource(PackageFragmentRoot root) {
+	return ResourcesPlugin.getWorkspace().getRoot();
+}
+
 /**
  * Configures and runs the <code>MultiOperation</code>.
  */
@@ -296,103 +385,14 @@ protected void runOperation(MultiOperation op, IJavaElement[] elements, IJavaEle
 	}
 	op.runOperation(monitor);
 }
-/**
- * Helper method - for the provided {@link IPath}, returns:
- * <ul>
- * <li>If the path corresponds to an internal file or folder, the {@link IResource} for that resource
- * <li>If the path corresponds to an external folder linked through {@link ExternalFoldersManager},
- * the {@link IFolder} for that folder
- * <li>If the path corresponds to an external library archive, the {@link File} for that archive
- * <li>Can return <code>null</code> if <code>checkResourceExistence</code> is <code>true</code>
- * and the entity referred to by the path does not exist on the file system
- * </ul>
- * Internal items must be referred to using container-relative paths.
- */
-public static Object getTarget(IPath path, boolean checkResourceExistence) {
-	Object target = getWorkspaceTarget(path); // Implicitly checks resource existence
-	if (target != null)
-		return target;
-	return getExternalTarget(path, checkResourceExistence);
+
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	builder.append("Java Model"); //$NON-NLS-1$
 }
 
-/**
- * Helper method - returns the {@link IResource} corresponding to the provided {@link IPath},
- * or <code>null</code> if no such resource exists.
- */
-public static IResource getWorkspaceTarget(IPath path) {
-	if (path == null || path.getDevice() != null)
-		return null;
-	IWorkspace workspace = ResourcesPlugin.getWorkspace();
-	if (workspace == null)
-		return null;
-	return workspace.getRoot().findMember(path);
-}
-
-/**
- * Helper method - returns either the linked {@link IFolder} or the {@link File} corresponding
- * to the provided {@link IPath}. If <code>checkResourceExistence</code> is <code>false</code>,
- * then the IFolder or File object is always returned, otherwise <code>null</code> is returned
- * if it does not exist on the file system.
- */
-public static Object getExternalTarget(IPath path, boolean checkResourceExistence) {
-	if (path == null)
-		return null;
-	ExternalFoldersManager externalFoldersManager = JavaModelManager.getExternalManager();
-	Object linkedFolder = externalFoldersManager.getFolder(path);
-	if (linkedFolder != null) {
-		if (checkResourceExistence) {
-			// check if external folder is present
-			File externalFile = new File(path.toOSString());
-			if (!externalFile.isDirectory()) {
-				return null;
-			}
-		}
-		return linkedFolder;
-	}
-	File externalFile = new File(path.toOSString());
-	if (!checkResourceExistence) {
-		return externalFile;
-	} else if (isExternalFile(path)) {
-		return externalFile;
-	}
-	return null;
-}
-
-/**
- * Helper method - returns whether an object is a file (i.e., it returns <code>true</code>
- * to {@link File#isFile()}.
- */
-public static boolean isFile(Object target) {
-	if (target instanceof File) {
-		IPath path = Path.fromOSString(((File) target).getPath());
-		return isExternalFile(path);
-	}
-	return false;
-}
-
-/**
- * Returns whether the provided path is an external file, checking and updating the
- * JavaModelManager's external file cache.
- */
-static private boolean isExternalFile(IPath path) {
-	if (JavaModelManager.getJavaModelManager().isExternalFile(path)) {
-		return true;
-	}
-	if (JavaModelManager.ZIP_ACCESS_VERBOSE) {
-		System.out.println("(" + Thread.currentThread() + ") [JavaModel.isExternalFile(...)] Checking existence of " + path.toString()); //$NON-NLS-1$ //$NON-NLS-2$
-	}
-	boolean isFile = path.toFile().isFile();
-	if (isFile) {
-		JavaModelManager.getJavaModelManager().addExternalFile(path);
-	}
-	return isFile;
-}
-
-/**
- * Helper method - returns the {@link File} item if <code>target</code> is a file (i.e., the target
- * returns <code>true</code> to {@link File#isFile()}. Otherwise returns <code>null</code>.
- */
-public static File getFile(Object target) {
-	return isFile(target) ? (File) target : null;
+@Override
+public void validateExistence_(IContext context) {
+	// always exists
 }
 }

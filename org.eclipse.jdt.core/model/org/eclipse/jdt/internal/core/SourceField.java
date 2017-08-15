@@ -27,6 +27,10 @@ public class SourceField extends NamedMember implements IField {
 protected SourceField(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean canEqual_(Object obj) {
+	return obj instanceof SourceField;
+}
 public ASTNode findNode(org.eclipse.jdt.core.dom.CompilationUnit ast) {
 	// For field declarations, a variable declaration fragment is returned
 	// Return the FieldDeclaration instead
@@ -97,6 +101,12 @@ public Object getConstant() throws JavaModelException {
 public int getElementType() {
 	return FIELD;
 }
+/**
+ * @see JavaElement#getHandleMemento()
+ */
+protected char getHandleMementoDelimiter() {
+	return JavaElement.JEM_FIELD;
+}
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#getKey()
  */
@@ -107,12 +117,6 @@ public String getKey() {
 		// happen only if force open is true
 		return null;
 	}
-}
-/**
- * @see JavaElement#getHandleMemento()
- */
-protected char getHandleMementoDelimiter() {
-	return JavaElement.JEM_FIELD;
 }
 /*
  * @see JavaElement#getPrimaryElement(boolean)
@@ -132,27 +136,6 @@ public String getTypeSignature() throws JavaModelException {
 	SourceFieldElementInfo info = (SourceFieldElementInfo) getElementInfo();
 	return info.getTypeSignature();
 }
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof SourceField;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		try {
-			builder.append(Signature.toString(getTypeSignature()));
-			builder.append(" "); //$NON-NLS-1$
-			hToStringName(builder, context);
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
-}
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#isEnumConstant()
  */public boolean isEnumConstant() throws JavaModelException {
@@ -168,5 +151,22 @@ public JavaElement resolved(Binding binding) {
 	SourceRefElement resolvedHandle = new ResolvedSourceField(this.parent, this.name, new String(binding.computeUniqueKey()));
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	return resolvedHandle;
+}
+@Override
+public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		toStringName_(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		toStringName_(builder, context);
+	} else {
+		try {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+			toStringName_(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
 }
 }

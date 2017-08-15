@@ -71,17 +71,6 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	return new ClassFileWorkingCopy(this.classFile, DefaultWorkingCopyOwner.PRIMARY);
 }
 
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append(this.classFile.getElementName());
-}
-
-public IResource resource(PackageFragmentRoot root) {
-	if (root.isArchive())
-		return root.resource(root);
-	return this.classFile.resource(root);
-}
-
 /**
  * @see Openable#openBuffer(IProgressMonitor, Object)
  */
@@ -110,6 +99,17 @@ protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelE
 	buffer.addBufferChangedListener(this);
 
 	return buffer;
+}
+
+public IResource resource(PackageFragmentRoot root) {
+	if (root.isArchive())
+		return root.resource(root);
+	return this.classFile.resource(root);
+}
+
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	builder.append(this.classFile.getElementName());
 }
 
 }

@@ -56,6 +56,10 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 		return super.equals(o);
 	}
 
+	public IClassFile getClassFile() {
+		return ((JavaElement)getParent()).getClassFile();
+	}
+
 	public IMember getDeclaringMember() {
 		return (IMember) getParent();
 	}
@@ -122,10 +126,6 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 		return super.getSourceRange();
 	}
 
-	public IClassFile getClassFile() {
-		return ((JavaElement)getParent()).getClassFile();
-	}
-
 	public int hashCode() {
 		final int prime = 31;
 		int result = super.hashCode();
@@ -135,7 +135,7 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 	}
 
 	@Override
-	public void hToStringName(StringBuilder builder, IContext context) {
+	public void toStringName_(StringBuilder builder, IContext context) {
 		builder.append('@');
 		builder.append(getElementName());
 	}

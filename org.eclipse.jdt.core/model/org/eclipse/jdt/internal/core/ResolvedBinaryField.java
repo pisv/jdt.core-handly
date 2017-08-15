@@ -40,21 +40,21 @@ public class ResolvedBinaryField extends BinaryField {
 		return this.uniqueKey;
 	}
 
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, context);
-		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
-			builder.append(" {key="); //$NON-NLS-1$
-			builder.append(this.getKey());
-			builder.append("}"); //$NON-NLS-1$
-		}
-	}
-
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.core.IField#isResolved()
 	 */
 	public boolean isResolved() {
 		return true;
+	}
+
+	@Override
+	public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+		super.toStringBody_(builder, body, context);
+		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
+			builder.append(" {key="); //$NON-NLS-1$
+			builder.append(this.getKey());
+			builder.append("}"); //$NON-NLS-1$
+		}
 	}
 
 	public JavaElement unresolved() {

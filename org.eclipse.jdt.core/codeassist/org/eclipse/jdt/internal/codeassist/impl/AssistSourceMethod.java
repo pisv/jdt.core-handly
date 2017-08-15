@@ -38,8 +38,13 @@ public class AssistSourceMethod extends ResolvedSourceMethod {
 		this.infoCache = infoCache;
 	}
 
-	public Object hFindBody() {
+	@Override
+	public Object findBody_() {
 		return this.infoCache.get(this);
+	}
+
+	public IAnnotation getAnnotation(String annotationName) {
+		return new AssistAnnotation(this, annotationName, this.infoCache);
 	}
 
 	/* (non-Javadoc)
@@ -64,20 +69,6 @@ public class AssistSourceMethod extends ResolvedSourceMethod {
 		return this.uniqueKey;
 	}
 
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
-	}
-
-	public boolean isResolved() {
-		getKey();
-		return this.isResolved;
-	}
-
-	public IAnnotation getAnnotation(String annotationName) {
-		return new AssistAnnotation(this, annotationName, this.infoCache);
-	}
-
 	public IType getType(String typeName, int count) {
 		AssistSourceType type = new AssistSourceType(this, typeName, this.bindingCache, this.infoCache);
 		type.occurrenceCount = count;
@@ -86,5 +77,15 @@ public class AssistSourceMethod extends ResolvedSourceMethod {
 
 	public ITypeParameter getTypeParameter(String typeParameterName) {
 		return new AssistTypeParameter(this, typeParameterName, this.infoCache);
+	}
+
+	public boolean isResolved() {
+		getKey();
+		return this.isResolved;
+	}
+
+	@Override
+	public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+		super.toStringBody_(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
 	}
 }

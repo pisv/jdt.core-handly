@@ -24,12 +24,12 @@ public class AssistImportContainer extends ImportContainer {
 		this.infoCache = infoCache;
 	}
 
-	protected IImportDeclaration getImport(String importName, boolean isOnDemand) {
-		return new AssistImportDeclaration(this, importName, isOnDemand, this.infoCache);
+	@Override
+	public Object findBody_() {
+		return this.infoCache.get(this);
 	}
 
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
+	protected IImportDeclaration getImport(String importName, boolean isOnDemand) {
+		return new AssistImportDeclaration(this, importName, isOnDemand, this.infoCache);
 	}
 }

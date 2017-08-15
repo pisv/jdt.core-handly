@@ -47,6 +47,7 @@ import org.eclipse.handly.context.IContext;
 import org.eclipse.handly.model.IElement;
 import org.eclipse.handly.model.impl.Body;
 import org.eclipse.handly.model.impl.IElementImplSupport;
+import org.eclipse.handly.model.impl.IModelManager;
 import org.eclipse.handly.util.Property;
 import org.eclipse.jdt.core.IClassFile;
 import org.eclipse.jdt.core.IClasspathAttribute;
@@ -128,17 +129,40 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	
 	public static final Property<Boolean> SHOW_RESOLVED_INFO = Property.get(JavaElement.class.getName() + ".showResolvedInfo", Boolean.class).withDefault(false); //$NON-NLS-1$
 
+	protected static final JavaElement[] NO_ELEMENTS = new JavaElement[0];
+
+	private static Set<String> invalidURLs = null;
+	
+	private static Set<String> validURLs = null;
+	protected static URL getLibraryJavadocLocation(IClasspathEntry entry) throws JavaModelException {
+		switch(entry.getEntryKind()) {
+			case IClasspathEntry.CPE_LIBRARY :
+			case IClasspathEntry.CPE_VARIABLE :
+				break;
+			default :
+				throw new IllegalArgumentException("Entry must be of kind CPE_LIBRARY or CPE_VARIABLE"); //$NON-NLS-1$
+		}
+
+		IClasspathAttribute[] extraAttributes= entry.getExtraAttributes();
+		for (int i= 0; i < extraAttributes.length; i++) {
+			IClasspathAttribute attrib= extraAttributes[i];
+			if (IClasspathAttribute.JAVADOC_LOCATION_ATTRIBUTE_NAME.equals(attrib.getName())) {
+				String value = attrib.getValue();
+				try {
+					return new URL(value);
+				} catch (MalformedURLException e) {
+					throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC, value));
+				}
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * This element's parent, or <code>null</code> if this
 	 * element does not have a parent.
 	 */
 	protected JavaElement parent;
-
-	protected static final JavaElement[] NO_ELEMENTS = new JavaElement[0];
-	
-	private static Set<String> invalidURLs = null;
-	private static Set<String> validURLs = null;
-
 	/**
 	 * Constructs a handle for a java element with
 	 * the given parent element.
@@ -153,10 +177,22 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		this.parent = parent;
 	}
 	/**
+	 * @see #JEM_DELIMITER_ESCAPE
+	 */
+	protected void appendEscapedDelimiter(StringBuffer buffer, char delimiter) {
+		buffer.append(JEM_DELIMITER_ESCAPE);
+		buffer.append(delimiter);
+	}
+	@Override
+	public boolean canEqual_(Object obj) {
+		if (!(obj instanceof JavaElement)) return false;
+		return getElementType() == ((JavaElement) obj).getElementType();
+	}
+	/**
 	 * @see IOpenable
 	 */
 	public final void close() {
-		hClose();
+		close_();
 	}
 	/**
 	 * Returns true if this handle represents the same Java element
@@ -177,17 +213,10 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		if (!(o instanceof JavaElement))
 			return false;
 		JavaElement other = (JavaElement) o;
-		if (!other.hCanEqual(this))
+		if (!other.canEqual_(this))
 			return false;
 		return getElementName().equals(other.getElementName()) &&
 				this.parent.equals(other.parent);
-	}
-	/**
-	 * @see #JEM_DELIMITER_ESCAPE
-	 */
-	protected void appendEscapedDelimiter(StringBuffer buffer, char delimiter) {
-		buffer.append(JEM_DELIMITER_ESCAPE);
-		buffer.append(delimiter);
 	}
 	/*
 	 * Do not add new delimiters here
@@ -221,9 +250,8 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * @see IJavaElement
 	 */
 	public final boolean exists() {
-		return hExists();
+		return exists_();
 	}
-
 	/**
 	 * Returns the <code>ASTNode</code> that corresponds to this <code>JavaElement</code>
 	 * or <code>null</code> if there is no corresponding node.
@@ -231,7 +259,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public ASTNode findNode(CompilationUnit ast) {
 		return null; // works only inside a compilation unit
 	}
-
 	/**
 	 * @see IJavaElement
 	 */
@@ -244,13 +271,19 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		}
 		return null;
 	}
+	/*
+	 * @see IJavaElement#getAttachedJavadoc(IProgressMonitor)
+	 */
+	public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
+		return null;
+	}
 	/**
 	 * @see IParent
 	 */
 	public final IJavaElement[] getChildren() throws JavaModelException {
 		IElement[] src;
 		try {
-			src = hChildren();
+			src = getChildren_();
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -258,6 +291,18 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		IJavaElement[] dest = new IJavaElement[length];
 		System.arraycopy(src, 0, dest, 0, length);
 		return dest;
+	}
+	@Override
+	public IElement[] getChildren_(Object body) {
+		if (body instanceof JavaElementInfo) {
+			IJavaElement[] children = ((JavaElementInfo) body).getChildren();
+			IElement[] result = new IElement[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		else {
+			return Body.NO_CHILDREN;
+		}
 	}
 	/**
 	 * Returns a collection of (immediate) children of this node of the
@@ -268,7 +313,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public ArrayList getChildrenOfType(int type) throws JavaModelException {
 		IElement[] children;
 		try {
-			children = hChildren();
+			children = getChildren_();
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -288,12 +333,14 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public IClassFile getClassFile() {
 		return null;
 	}
+
 	/**
 	 * @see IMember
 	 */
 	public ICompilationUnit getCompilationUnit() {
 		return null;
 	}
+
 	/**
 	 * Returns the info for this handle.
 	 * If this element is not already open, it and all of its parents are opened.
@@ -313,7 +360,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public final Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
 		try {
-			return hBody(EMPTY_CONTEXT, monitor);
+			return getBody_(EMPTY_CONTEXT, monitor);
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -326,12 +373,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	}
 	/*
 	 * Creates a Java element handle from the given memento.
-	 * The given token is the current delimiter indicating the type of the next token(s).
-	 * The given working copy owner is used only for compilation unit handles.
-	 */
-	public abstract IJavaElement getHandleFromMemento(String token, MementoTokenizer memento, WorkingCopyOwner owner);
-	/*
-	 * Creates a Java element handle from the given memento.
 	 * The given working copy owner is used only for compilation unit handles.
 	 */
 	public IJavaElement getHandleFromMemento(MementoTokenizer memento, WorkingCopyOwner owner) {
@@ -339,6 +380,12 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		String token = memento.nextToken();
 		return getHandleFromMemento(token, memento, owner);
 	}
+	/*
+	 * Creates a Java element handle from the given memento.
+	 * The given token is the current delimiter indicating the type of the next token(s).
+	 * The given working copy owner is used only for compilation unit handles.
+	 */
+	public abstract IJavaElement getHandleFromMemento(String token, MementoTokenizer memento, WorkingCopyOwner owner);
 	/**
 	 * @see IJavaElement
 	 */
@@ -363,6 +410,54 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * contribution to a memento.
 	 */
 	protected abstract char getHandleMementoDelimiter();
+	int getIndexOf(byte[] array, byte[] toBeFound, int start, int end) {
+		if (array == null || toBeFound == null)
+			return -1;
+		final int toBeFoundLength = toBeFound.length;
+		final int arrayLength = (end != -1 && end < array.length) ? end : array.length;
+		if (arrayLength < toBeFoundLength)
+			return -1;
+		loop: for (int i = start, max = arrayLength - toBeFoundLength + 1; i < max; i++) {
+			if (isSameCharacter(array[i], toBeFound[0])) {
+				for (int j = 1; j < toBeFoundLength; j++) {
+					if (!isSameCharacter(array[i + j], toBeFound[j]))
+						continue loop;
+				}
+				return i;
+			}
+		}
+		return -1;
+	}
+	protected URL getJavadocBaseLocation() throws JavaModelException {
+		IPackageFragmentRoot root= (IPackageFragmentRoot) getAncestor(IJavaElement.PACKAGE_FRAGMENT_ROOT);
+		if (root == null) {
+			return null;
+		}
+
+		if (root.getKind() == IPackageFragmentRoot.K_BINARY) {
+			IClasspathEntry entry= null;
+			try {
+				entry= root.getResolvedClasspathEntry();
+				URL url = getLibraryJavadocLocation(entry);
+				if (url != null) {
+					return url;
+				}
+			}
+			catch(JavaModelException jme) {
+				// Proceed with raw classpath
+			}
+			
+			entry= root.getRawClasspathEntry();
+			switch (entry.getEntryKind()) {
+				case IClasspathEntry.CPE_LIBRARY:
+				case IClasspathEntry.CPE_VARIABLE:
+					return getLibraryJavadocLocation(entry);
+				default:
+					return null;
+			}			
+		}
+		return null;
+	}
 	/**
 	 * @see IJavaElement
 	 */
@@ -373,7 +468,9 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		} while ((current = current.getParent()) != null);
 		return null;
 	}
-
+	public JavaModelManager getJavaModelManager() {
+		return JavaModelManager.getJavaModelManager();
+	}
 	/**
 	 * @see IJavaElement
 	 */
@@ -383,6 +480,14 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 			if (current instanceof IJavaProject) return (IJavaProject) current;
 		} while ((current = current.getParent()) != null);
 		return null;
+	}
+	@Override
+	public final IModelManager getModelManager_() {
+		return getJavaModelManager();
+	}
+	@Override
+	public final String getName_() {
+		return getElementName();
 	}
 	/*
 	 * @see IJavaElement
@@ -395,12 +500,16 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * hierarchy of this element.
 	 */
 	public final IOpenable getOpenableParent() {
-		return (IOpenable)hOpenableParent();
+		return (IOpenable)getOpenableParent_();
 	}
 	/**
 	 * @see IJavaElement
 	 */
 	public final IJavaElement getParent() {
+		return this.parent;
+	}
+	@Override
+	public final IElement getParent_() {
 		return this.parent;
 	}
 	/*
@@ -419,7 +528,42 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public IResource getResource() {
 		return resource();
 	}
-	public abstract IResource resource();
+	@Override
+	public final IResource getResource_() {
+		return getResource();
+	}
+	/* (non-Javadoc)
+	 * @see org.eclipse.jdt.core.IJavaElement#getSchedulingRule()
+	 */
+	public ISchedulingRule getSchedulingRule() {
+		IResource resource = resource();
+		if (resource == null) {
+			class NoResourceSchedulingRule implements ISchedulingRule {
+				public IPath path;
+				public NoResourceSchedulingRule(IPath path) {
+					this.path = path;
+				}
+				public boolean contains(ISchedulingRule rule) {
+					if (rule instanceof NoResourceSchedulingRule) {
+						return this.path.isPrefixOf(((NoResourceSchedulingRule)rule).path);
+					} else {
+						return false;
+					}
+				}
+				public boolean isConflicting(ISchedulingRule rule) {
+					if (rule instanceof NoResourceSchedulingRule) {
+						IPath otherPath = ((NoResourceSchedulingRule)rule).path;
+						return this.path.isPrefixOf(otherPath) || otherPath.isPrefixOf(this.path);
+					} else {
+						return false;
+					}
+				}
+			}
+			return new NoResourceSchedulingRule(getPath());
+		} else {
+			return resource;
+		}
+	}
 	/**
 	 * Returns the element that is located at the given source position
 	 * in this element.  This is a helper method for <code>ICompilationUnit#getElementAt</code>,
@@ -476,346 +620,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public SourceMapper getSourceMapper() {
 		return ((JavaElement)getParent()).getSourceMapper();
 	}
-	/* (non-Javadoc)
-	 * @see org.eclipse.jdt.core.IJavaElement#getSchedulingRule()
-	 */
-	public ISchedulingRule getSchedulingRule() {
-		IResource resource = resource();
-		if (resource == null) {
-			class NoResourceSchedulingRule implements ISchedulingRule {
-				public IPath path;
-				public NoResourceSchedulingRule(IPath path) {
-					this.path = path;
-				}
-				public boolean contains(ISchedulingRule rule) {
-					if (rule instanceof NoResourceSchedulingRule) {
-						return this.path.isPrefixOf(((NoResourceSchedulingRule)rule).path);
-					} else {
-						return false;
-					}
-				}
-				public boolean isConflicting(ISchedulingRule rule) {
-					if (rule instanceof NoResourceSchedulingRule) {
-						IPath otherPath = ((NoResourceSchedulingRule)rule).path;
-						return this.path.isPrefixOf(otherPath) || otherPath.isPrefixOf(this.path);
-					} else {
-						return false;
-					}
-				}
-			}
-			return new NoResourceSchedulingRule(getPath());
-		} else {
-			return resource;
-		}
-	}
-	/**
-	 * @see IParent
-	 */
-	public boolean hasChildren() throws JavaModelException {
-		// if I am not open, return true to avoid opening (case of a Java project, a compilation unit or a class file).
-		// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=52474
-		Object body = hFindBody();
-		if (body instanceof JavaElementInfo) {
-			return ((JavaElementInfo)body).getChildren().length > 0;
-		} else {
-			return true;
-		}
-	}
-
-	/**
-	 * Returns the hash code for this Java element. By default,
-	 * the hash code for an element is a combination of its name
-	 * and parent's hash code. Elements with other requirements must
-	 * override this method.
-	 */
-	public int hashCode() {
-		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
-	}
-	@Override
-	public boolean hCanEqual(Object obj) {
-		if (!(obj instanceof JavaElement)) return false;
-		return getElementType() == ((JavaElement) obj).getElementType();
-	}
-	@Override
-	public IElement[] hChildren(Object body) {
-		if (body instanceof JavaElementInfo) {
-			IJavaElement[] children = ((JavaElementInfo) body).getChildren();
-			IElement[] result = new IElement[children.length];
-			System.arraycopy(children, 0, result, 0, children.length);
-			return result;
-		}
-		else {
-			return Body.NO_CHILDREN;
-		}
-	}
-	@Override
-	public final CoreException hDoesNotExistException() {
-		return newNotPresentException();
-	}
-	@Override
-	public final JavaElementManager hElementManager() {
-		return (JavaElementManager) IElementImplSupport.super.hElementManager();
-	}
-	@Override
-	public final JavaModelManager hModelManager() {
-		return JavaModelManager.getJavaModelManager();
-	}
-	@Override
-	public final String hName() {
-		return getElementName();
-	}
-	@Override
-	public final IElement hParent() {
-		return this.parent;
-	}
-//	@Override
-//	public void hRemove(IContext context) {
-//		synchronized (hElementManager()) {
-//			Object body = hPeekAtBody();
-//			if (body != null) {
-//				boolean wasVerbose = false;
-//				try {
-//					if (JavaModelCache.VERBOSE) {
-//						String elementType;
-//						switch (getElementType()) {
-//							case IJavaElement.JAVA_PROJECT:
-//								elementType = "project"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-//								elementType = "root"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.PACKAGE_FRAGMENT:
-//								elementType = "package"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.CLASS_FILE:
-//								elementType = "class file"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.COMPILATION_UNIT:
-//								elementType = "compilation unit"; //$NON-NLS-1$
-//								break;
-//							default:
-//								elementType = "element"; //$NON-NLS-1$
-//						}
-//						System.out.println(
-//								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
-//						wasVerbose = true;
-//						JavaModelCache.VERBOSE = false;
-//					}
-//					IElementImplSupport.super.hRemove(context);
-//					if (wasVerbose) {
-//						System.out.println(hElementManager().cacheToString("-> ")); //$NON-NLS-1$
-//					}
-//				} finally {
-//					JavaModelCache.VERBOSE = wasVerbose;
-//				}
-//			}
-//		}
-//	}
-	@Override
-	public final IResource hResource() {
-		return getResource();
-	}
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		IElementImplSupport.super.hToStringAncestors(builder,
-			with(of(SHOW_RESOLVED_INFO, false), context));
-	}
-	/**
-	 * Returns true if this element is an ancestor of the given element,
-	 * otherwise false.
-	 */
-	public boolean isAncestorOf(IJavaElement e) {
-		IJavaElement parentElement= e.getParent();
-		while (parentElement != null && !parentElement.equals(this)) {
-			parentElement= parentElement.getParent();
-		}
-		return parentElement != null;
-	}
-
-	/**
-	 * @see IJavaElement
-	 */
-	public boolean isReadOnly() {
-		return false;
-	}
-	/**
-	 * Creates and returns a new not present exception for this element.
-	 */
-	public JavaModelException newNotPresentException() {
-		return new JavaModelException(newDoesNotExistStatus());
-	}
-	protected JavaModelStatus newDoesNotExistStatus() {
-		return new JavaModelStatus(IJavaModelStatusConstants.ELEMENT_DOES_NOT_EXIST, this);
-	}
-	/**
-	 * Creates and returns a new Java model exception for this element with the given status.
-	 */
-	public JavaModelException newJavaModelException(IStatus status) {
-		if (status instanceof IJavaModelStatus)
-			return new JavaModelException((IJavaModelStatus) status);
-		else
-			return new JavaModelException(new JavaModelStatus(status.getSeverity(), status.getCode(), status.getMessage()));
-	}
-	/**
-	 */
-	public String readableName() {
-		return getElementName();
-	}
-	public JavaElement resolved(Binding binding) {
-		return this;
-	}
-	public JavaElement unresolved() {
-		return this;
-	}
-	/**
-	 * Debugging purposes
-	 */
-	public final String toDebugString() {
-		StringBuilder builder = new StringBuilder();
-		hToStringBody(builder, NO_BODY, Contexts.EMPTY_CONTEXT);
-		return builder.toString();
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	public final String toString() {
-		return hToString(EMPTY_CONTEXT);
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	public final String toStringWithAncestors() {
-		return toStringWithAncestors(true/*show resolved info*/);
-	}
-	/**
-	 *  Debugging purposes
-	 */
-	public final String toStringWithAncestors(boolean showResolvedInfo) {
-		return hToString(with(of(FORMAT_STYLE, MEDIUM), of(SHOW_RESOLVED_INFO, showResolvedInfo)));
-	}
-
-	protected URL getJavadocBaseLocation() throws JavaModelException {
-		IPackageFragmentRoot root= (IPackageFragmentRoot) getAncestor(IJavaElement.PACKAGE_FRAGMENT_ROOT);
-		if (root == null) {
-			return null;
-		}
-
-		if (root.getKind() == IPackageFragmentRoot.K_BINARY) {
-			IClasspathEntry entry= null;
-			try {
-				entry= root.getResolvedClasspathEntry();
-				URL url = getLibraryJavadocLocation(entry);
-				if (url != null) {
-					return url;
-				}
-			}
-			catch(JavaModelException jme) {
-				// Proceed with raw classpath
-			}
-			
-			entry= root.getRawClasspathEntry();
-			switch (entry.getEntryKind()) {
-				case IClasspathEntry.CPE_LIBRARY:
-				case IClasspathEntry.CPE_VARIABLE:
-					return getLibraryJavadocLocation(entry);
-				default:
-					return null;
-			}			
-		}
-		return null;
-	}
-
-	protected static URL getLibraryJavadocLocation(IClasspathEntry entry) throws JavaModelException {
-		switch(entry.getEntryKind()) {
-			case IClasspathEntry.CPE_LIBRARY :
-			case IClasspathEntry.CPE_VARIABLE :
-				break;
-			default :
-				throw new IllegalArgumentException("Entry must be of kind CPE_LIBRARY or CPE_VARIABLE"); //$NON-NLS-1$
-		}
-
-		IClasspathAttribute[] extraAttributes= entry.getExtraAttributes();
-		for (int i= 0; i < extraAttributes.length; i++) {
-			IClasspathAttribute attrib= extraAttributes[i];
-			if (IClasspathAttribute.JAVADOC_LOCATION_ATTRIBUTE_NAME.equals(attrib.getName())) {
-				String value = attrib.getValue();
-				try {
-					return new URL(value);
-				} catch (MalformedURLException e) {
-					throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC, value));
-				}
-			}
-		}
-		return null;
-	}
-
-	/*
-	 * @see IJavaElement#getAttachedJavadoc(IProgressMonitor)
-	 */
-	public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
-		return null;
-	}
-
-	int getIndexOf(byte[] array, byte[] toBeFound, int start, int end) {
-		if (array == null || toBeFound == null)
-			return -1;
-		final int toBeFoundLength = toBeFound.length;
-		final int arrayLength = (end != -1 && end < array.length) ? end : array.length;
-		if (arrayLength < toBeFoundLength)
-			return -1;
-		loop: for (int i = start, max = arrayLength - toBeFoundLength + 1; i < max; i++) {
-			if (isSameCharacter(array[i], toBeFound[0])) {
-				for (int j = 1; j < toBeFoundLength; j++) {
-					if (!isSameCharacter(array[i + j], toBeFound[j]))
-						continue loop;
-				}
-				return i;
-			}
-		}
-		return -1;
-	}
-	boolean isSameCharacter(byte b1, byte b2) {
-		if (b1 == b2 || Character.toUpperCase((char) b1) == Character.toUpperCase((char) b2)) {
-			return true;
-		}
-		return false;
-	}
-	
-	/*
-	 * This method caches a list of good and bad Javadoc locations in the current eclipse session. 
-	 */
-	protected void validateAndCache(URL baseLoc, FileNotFoundException e) throws JavaModelException {
-		String url = baseLoc.toString();
-		if (validURLs != null && validURLs.contains(url)) return;
-		
-		if (invalidURLs != null && invalidURLs.contains(url)) 
-				throw new JavaModelException(e, IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC);
-
-		InputStream input = null;
-		try {
-			URLConnection connection = baseLoc.openConnection();
-			input = connection.getInputStream();
-			if (validURLs == null) {
-				validURLs = new HashSet<String>(1);
-			}
-			validURLs.add(url);
-		} catch (Exception e1) {
-			if (invalidURLs == null) { 
-				invalidURLs = new HashSet<String>(1);
-			}
-			invalidURLs.add(url);
-			throw new JavaModelException(e, IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC);
-		} finally {
-			if (input != null) {
-				try {
-					input.close();
-				} catch (Exception e1) {
-					// Ignore
-				}
-			}
-		}
-	}
-
 	protected String getURLContents(URL baseLoc, String docUrlValue) throws JavaModelException {
 		InputStream stream = null;
 		JarURLConnection connection2 = null;
@@ -939,5 +743,200 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
  			}
 		}
 		return null;
+	}
+
+	/**
+	 * @see IParent
+	 */
+	public boolean hasChildren() throws JavaModelException {
+		// if I am not open, return true to avoid opening (case of a Java project, a compilation unit or a class file).
+		// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=52474
+		Object body = findBody_();
+		if (body instanceof JavaElementInfo) {
+			return ((JavaElementInfo)body).getChildren().length > 0;
+		} else {
+			return true;
+		}
+	}
+	/**
+	 * Returns the hash code for this Java element. By default,
+	 * the hash code for an element is a combination of its name
+	 * and parent's hash code. Elements with other requirements must
+	 * override this method.
+	 */
+	public int hashCode() {
+		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
+	}
+
+	/**
+	 * Returns true if this element is an ancestor of the given element,
+	 * otherwise false.
+	 */
+	public boolean isAncestorOf(IJavaElement e) {
+		IJavaElement parentElement= e.getParent();
+		while (parentElement != null && !parentElement.equals(this)) {
+			parentElement= parentElement.getParent();
+		}
+		return parentElement != null;
+	}
+	/**
+	 * @see IJavaElement
+	 */
+	public boolean isReadOnly() {
+		return false;
+	}
+	boolean isSameCharacter(byte b1, byte b2) {
+		if (b1 == b2 || Character.toUpperCase((char) b1) == Character.toUpperCase((char) b2)) {
+			return true;
+		}
+		return false;
+	}
+	@Override
+	public final CoreException newDoesNotExistException_() {
+		return newNotPresentException();
+	}
+	protected JavaModelStatus newDoesNotExistStatus() {
+		return new JavaModelStatus(IJavaModelStatusConstants.ELEMENT_DOES_NOT_EXIST, this);
+	}
+	/**
+	 * Creates and returns a new Java model exception for this element with the given status.
+	 */
+	public JavaModelException newJavaModelException(IStatus status) {
+		if (status instanceof IJavaModelStatus)
+			return new JavaModelException((IJavaModelStatus) status);
+		else
+			return new JavaModelException(new JavaModelStatus(status.getSeverity(), status.getCode(), status.getMessage()));
+	}
+	/**
+	 * Creates and returns a new not present exception for this element.
+	 */
+	public JavaModelException newNotPresentException() {
+		return new JavaModelException(newDoesNotExistStatus());
+	}
+	/**
+	 */
+	public String readableName() {
+		return getElementName();
+	}
+//	@Override
+//	public void remove_(IContext context) {
+//		synchronized (getElementManager_()) {
+//			Object body = peekAtBody_();
+//			if (body != null) {
+//				boolean wasVerbose = false;
+//				try {
+//					if (JavaModelCache.VERBOSE) {
+//						String elementType;
+//						switch (getElementType()) {
+//							case IJavaElement.JAVA_PROJECT:
+//								elementType = "project"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
+//								elementType = "root"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT:
+//								elementType = "package"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.CLASS_FILE:
+//								elementType = "class file"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.COMPILATION_UNIT:
+//								elementType = "compilation unit"; //$NON-NLS-1$
+//								break;
+//							default:
+//								elementType = "element"; //$NON-NLS-1$
+//						}
+//						System.out.println(
+//								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+//						wasVerbose = true;
+//						JavaModelCache.VERBOSE = false;
+//					}
+//					IElementImplSupport.super.remove_(context);
+//					if (wasVerbose) {
+//						System.out.println(getJavaModelManager().getElementManager().cacheToString("-> ")); //$NON-NLS-1$
+//					}
+//				} finally {
+//					JavaModelCache.VERBOSE = wasVerbose;
+//				}
+//			}
+//		}
+//	}
+	public JavaElement resolved(Binding binding) {
+		return this;
+	}
+	public abstract IResource resource();
+
+	/**
+	 * Debugging purposes
+	 */
+	public final String toDebugString() {
+		StringBuilder builder = new StringBuilder();
+		toStringBody_(builder, NO_BODY, Contexts.EMPTY_CONTEXT);
+		return builder.toString();
+	}
+
+	/**
+	 *  Debugging purposes
+	 */
+	public final String toString() {
+		return toString_(EMPTY_CONTEXT);
+	}
+
+	@Override
+	public void toStringAncestors_(StringBuilder builder, IContext context) {
+		IElementImplSupport.super.toStringAncestors_(builder,
+			with(of(SHOW_RESOLVED_INFO, false), context));
+	}
+
+	/**
+	 *  Debugging purposes
+	 */
+	public final String toStringWithAncestors() {
+		return toStringWithAncestors(true/*show resolved info*/);
+	}
+	/**
+	 *  Debugging purposes
+	 */
+	public final String toStringWithAncestors(boolean showResolvedInfo) {
+		return toString_(with(of(FORMAT_STYLE, MEDIUM), of(SHOW_RESOLVED_INFO, showResolvedInfo)));
+	}
+	
+	public JavaElement unresolved() {
+		return this;
+	}
+
+	/*
+	 * This method caches a list of good and bad Javadoc locations in the current eclipse session. 
+	 */
+	protected void validateAndCache(URL baseLoc, FileNotFoundException e) throws JavaModelException {
+		String url = baseLoc.toString();
+		if (validURLs != null && validURLs.contains(url)) return;
+		
+		if (invalidURLs != null && invalidURLs.contains(url)) 
+				throw new JavaModelException(e, IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC);
+
+		InputStream input = null;
+		try {
+			URLConnection connection = baseLoc.openConnection();
+			input = connection.getInputStream();
+			if (validURLs == null) {
+				validURLs = new HashSet<String>(1);
+			}
+			validURLs.add(url);
+		} catch (Exception e1) {
+			if (invalidURLs == null) { 
+				invalidURLs = new HashSet<String>(1);
+			}
+			invalidURLs.add(url);
+			throw new JavaModelException(e, IJavaModelStatusConstants.CANNOT_RETRIEVE_ATTACHED_JAVADOC);
+		} finally {
+			if (input != null) {
+				try {
+					input.close();
+				} catch (Exception e1) {
+					// Ignore
+				}
+			}
+		}
 	}
 }

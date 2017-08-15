@@ -65,6 +65,55 @@ protected PackageFragment(PackageFragmentRoot root, String[] names) {
 	this.isValidPackageName = internalIsValidPackageName();
 }
 /**
+ * @see Openable
+ */
+@Override
+public void buildStructure_(IContext context, IProgressMonitor pm) throws CoreException {
+	// add compilation units/class files from resources
+	HashSet vChildren = new HashSet();
+	int kind = getKind();
+	PackageFragmentRoot root = getPackageFragmentRoot();
+	char[][] inclusionPatterns = root.fullInclusionPatternChars();
+	char[][] exclusionPatterns = root.fullExclusionPatternChars();
+	IResource[] members = ((IContainer) resource()).members();
+	int length = members.length;
+	if (length > 0) {
+		IJavaProject project = getJavaProject();
+		String sourceLevel = project.getOption(JavaCore.COMPILER_SOURCE, true);
+		String complianceLevel = project.getOption(JavaCore.COMPILER_COMPLIANCE, true);
+		for (int i = 0; i < length; i++) {
+			IResource child = members[i];
+			if (child.getType() != IResource.FOLDER
+					&& !Util.isExcluded(child, inclusionPatterns, exclusionPatterns)) {
+				IJavaElement childElement;
+				if (kind == IPackageFragmentRoot.K_SOURCE && Util.isValidCompilationUnitName(child.getName(), sourceLevel, complianceLevel)) {
+					childElement = new CompilationUnit(this, child.getName(), DefaultWorkingCopyOwner.PRIMARY);
+					vChildren.add(childElement);
+				} else if (kind == IPackageFragmentRoot.K_BINARY && Util.isValidClassFileName(child.getName(), sourceLevel, complianceLevel)) {
+					childElement = getClassFile(child.getName());
+					vChildren.add(childElement);
+				}
+			}
+		}
+	}
+
+	if (kind == IPackageFragmentRoot.K_SOURCE) {
+		// add primary compilation units
+		ICompilationUnit[] primaryCompilationUnits = getCompilationUnits(DefaultWorkingCopyOwner.PRIMARY);
+		for (int i = 0, l = primaryCompilationUnits.length; i < l; i++) {
+			ICompilationUnit primary = primaryCompilationUnits[i];
+			vChildren.add(primary);
+		}
+	}
+
+	IJavaElement[] children = new IJavaElement[vChildren.size()];
+	vChildren.toArray(children);
+	PackageFragmentInfo info = new PackageFragmentInfo();
+	info.setChildren(children);
+	info.setIsStructureKnown(true);
+	context.get(NEW_ELEMENTS).put(this, info);
+}
+/**
  * Returns true if this fragment contains at least one java resource.
  * Returns false otherwise.
  */
@@ -112,6 +161,50 @@ public boolean equals(Object o) {
 	PackageFragment other = (PackageFragment) o;
 	return Util.equalArraysOrNull(this.names, other.names) &&
 			this.parent.equals(other.parent);
+}
+@Override
+public boolean exists_() {
+	// super._exists() only checks for the parent and the resource existence
+	// so also ensure that:
+	//  - the package is not excluded (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=138577)
+	//  - its name is valide (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=108456)
+	return super.exists_() && !Util.isExcluded(this) && isValidPackageName();
+}
+/*
+ * @see IJavaElement#getAttachedJavadoc(IProgressMonitor)
+ */
+public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
+	PerProjectInfo projectInfo = getJavaModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+	String cachedJavadoc = null;
+	synchronized (projectInfo.javadocCache) {
+		cachedJavadoc = (String) projectInfo.javadocCache.get(this);
+	}
+	if (cachedJavadoc != null) {
+		return cachedJavadoc;
+	}
+	URL baseLocation= getJavadocBaseLocation();
+	if (baseLocation == null) {
+		return null;
+	}
+	StringBuffer pathBuffer = new StringBuffer(baseLocation.toExternalForm());
+
+	if (!(pathBuffer.charAt(pathBuffer.length() - 1) == '/')) {
+		pathBuffer.append('/');
+	}
+	String packPath= getElementName().replace('.', '/');
+	pathBuffer.append(packPath).append('/').append(JavadocConstants.PACKAGE_FILE_NAME);
+
+	if (monitor != null && monitor.isCanceled()) throw new OperationCanceledException();
+	String contents = getURLContents(baseLocation, String.valueOf(pathBuffer));
+	if (monitor != null && monitor.isCanceled()) throw new OperationCanceledException();
+	if (contents == null) return null;
+	
+	contents = (new JavadocContents(contents)).getPackageDoc();
+	if (contents == null) contents = ""; //$NON-NLS-1$
+	synchronized (projectInfo.javadocCache) {
+		projectInfo.javadocCache.put(this, contents);
+	}
+	return contents;
 }
 /**
  * @see IPackageFragment#getClassFile(String)
@@ -172,7 +265,7 @@ public ICompilationUnit[] getCompilationUnits() throws JavaModelException {
  * @see IPackageFragment#getCompilationUnits(WorkingCopyOwner)
  */
 public ICompilationUnit[] getCompilationUnits(WorkingCopyOwner owner) {
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, false/*don't add primary*/);
+	ICompilationUnit[] workingCopies = getJavaModelManager().getWorkingCopies(owner, false/*don't add primary*/);
 	if (workingCopies == null) return JavaModelManager.NO_WORKING_COPY;
 	int length = workingCopies.length;
 	ICompilationUnit[] result = new ICompilationUnit[length];
@@ -257,20 +350,6 @@ public IPath getPath() {
 	}
 }
 /**
- * @see JavaElement#resource()
- */
-public IResource resource(PackageFragmentRoot root) {
-	int length = this.names.length;
-	if (length == 0) {
-		return root.resource(root);
-	} else {
-		IPath path = new Path(this.names[0]);
-		for (int i = 1; i < length; i++)
-			path = path.append(this.names[i]);
-		return ((IContainer)root.resource(root)).getFolder(path);
-	}
-}
-/**
  * @see IJavaElement#getUnderlyingResource()
  */
 public IResource getUnderlyingResource() throws JavaModelException {
@@ -296,17 +375,17 @@ public IResource getUnderlyingResource() throws JavaModelException {
 		return rootResource;
 	}
 }
-public int hashCode() {
-	int hash = this.parent.hashCode();
-	for (int i = 0, length = this.names.length; i < length; i++)
-		hash = Util.combineHashCodes(this.names[i].hashCode(), hash);
-	return hash;
-}
 /**
  * @see IParent
  */
 public boolean hasChildren() throws JavaModelException {
 	return getChildren().length > 0;
+}
+public int hashCode() {
+	int hash = this.parent.hashCode();
+	for (int i = 0, length = this.names.length; i < length; i++)
+		hash = Util.combineHashCodes(this.names[i].hashCode(), hash);
+	return hash;
 }
 /**
  * @see IPackageFragment#hasSubpackages()
@@ -323,97 +402,6 @@ public boolean hasSubpackages() throws JavaModelException {
 		return true;
 	}
 	return false;
-}
-/**
- * @see Openable
- */
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	// add compilation units/class files from resources
-	HashSet vChildren = new HashSet();
-	int kind = getKind();
-	PackageFragmentRoot root = getPackageFragmentRoot();
-	char[][] inclusionPatterns = root.fullInclusionPatternChars();
-	char[][] exclusionPatterns = root.fullExclusionPatternChars();
-	IResource[] members = ((IContainer) resource()).members();
-	int length = members.length;
-	if (length > 0) {
-		IJavaProject project = getJavaProject();
-		String sourceLevel = project.getOption(JavaCore.COMPILER_SOURCE, true);
-		String complianceLevel = project.getOption(JavaCore.COMPILER_COMPLIANCE, true);
-		for (int i = 0; i < length; i++) {
-			IResource child = members[i];
-			if (child.getType() != IResource.FOLDER
-					&& !Util.isExcluded(child, inclusionPatterns, exclusionPatterns)) {
-				IJavaElement childElement;
-				if (kind == IPackageFragmentRoot.K_SOURCE && Util.isValidCompilationUnitName(child.getName(), sourceLevel, complianceLevel)) {
-					childElement = new CompilationUnit(this, child.getName(), DefaultWorkingCopyOwner.PRIMARY);
-					vChildren.add(childElement);
-				} else if (kind == IPackageFragmentRoot.K_BINARY && Util.isValidClassFileName(child.getName(), sourceLevel, complianceLevel)) {
-					childElement = getClassFile(child.getName());
-					vChildren.add(childElement);
-				}
-			}
-		}
-	}
-
-	if (kind == IPackageFragmentRoot.K_SOURCE) {
-		// add primary compilation units
-		ICompilationUnit[] primaryCompilationUnits = getCompilationUnits(DefaultWorkingCopyOwner.PRIMARY);
-		for (int i = 0, l = primaryCompilationUnits.length; i < l; i++) {
-			ICompilationUnit primary = primaryCompilationUnits[i];
-			vChildren.add(primary);
-		}
-	}
-
-	IJavaElement[] children = new IJavaElement[vChildren.size()];
-	vChildren.toArray(children);
-	PackageFragmentInfo info = new PackageFragmentInfo();
-	info.setChildren(children);
-	info.setIsStructureKnown(true);
-	context.get(NEW_ELEMENTS).put(this, info);
-}
-@Override
-public boolean hExists() {
-	// super.exist() only checks for the parent and the resource existence
-	// so also ensure that:
-	//  - the package is not excluded (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=138577)
-	//  - its name is valide (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=108456)
-	return super.hExists() && !Util.isExcluded(this) && isValidPackageName();
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	super.hToStringBody(builder, body, context);
-	if (body != null && context.getOrDefault(ToStringOptions.INDENT_LEVEL) > 0) {
-		builder.append(" (...)"); //$NON-NLS-1$
-	}
-}
-@Override
-public void hToStringChildren(StringBuilder builder, Object body, IContext context) {
-	if (context.getOrDefault(ToStringOptions.INDENT_LEVEL) == 0)
-		super.hToStringChildren(builder, body, context);
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	if (isDefaultPackage())
-		builder.append("<default>"); //$NON-NLS-1$
-	else
-		super.hToStringName(builder, context);
-}
-@Override
-public void hValidateExistence(IContext context) throws CoreException {
-	// check that the name of the package is valid (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=108456)
-	if (!isValidPackageName())
-		throw hDoesNotExistException();
-
-	IResource underlyingResource = resource();
-	// check whether this pkg can be opened
-	if (underlyingResource != null && !resourceExists(underlyingResource))
-		throw hDoesNotExistException();
-
-	// check that it is not excluded (https://bugs.eclipse.org/bugs/show_bug.cgi?id=138577)
-	if (getKind() == IPackageFragmentRoot.K_SOURCE && Util.isExcluded(this))
-		throw hDoesNotExistException();
 }
 protected boolean internalIsValidPackageName() {
 	// if package fragment refers to folder in another IProject, then
@@ -468,40 +456,52 @@ public void rename(String newName, boolean force, IProgressMonitor monitor) thro
 	String[] renamings= new String[] {newName};
 	getJavaModel().rename(elements, dests, renamings, force, monitor);
 }
-/*
- * @see IJavaElement#getAttachedJavadoc(IProgressMonitor)
+/**
+ * @see JavaElement#resource()
  */
-public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
-	PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
-	String cachedJavadoc = null;
-	synchronized (projectInfo.javadocCache) {
-		cachedJavadoc = (String) projectInfo.javadocCache.get(this);
+public IResource resource(PackageFragmentRoot root) {
+	int length = this.names.length;
+	if (length == 0) {
+		return root.resource(root);
+	} else {
+		IPath path = new Path(this.names[0]);
+		for (int i = 1; i < length; i++)
+			path = path.append(this.names[i]);
+		return ((IContainer)root.resource(root)).getFolder(path);
 	}
-	if (cachedJavadoc != null) {
-		return cachedJavadoc;
+}
+@Override
+public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+	super.toStringBody_(builder, body, context);
+	if (body != null && context.getOrDefault(ToStringOptions.INDENT_LEVEL) > 0) {
+		builder.append(" (...)"); //$NON-NLS-1$
 	}
-	URL baseLocation= getJavadocBaseLocation();
-	if (baseLocation == null) {
-		return null;
-	}
-	StringBuffer pathBuffer = new StringBuffer(baseLocation.toExternalForm());
+}
+@Override
+public void toStringChildren_(StringBuilder builder, Object body, IContext context) {
+	if (context.getOrDefault(ToStringOptions.INDENT_LEVEL) == 0)
+		super.toStringChildren_(builder, body, context);
+}
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	if (isDefaultPackage())
+		builder.append("<default>"); //$NON-NLS-1$
+	else
+		super.toStringName_(builder, context);
+}
+@Override
+public void validateExistence_(IContext context) throws CoreException {
+	// check that the name of the package is valid (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=108456)
+	if (!isValidPackageName())
+		throw newDoesNotExistException_();
 
-	if (!(pathBuffer.charAt(pathBuffer.length() - 1) == '/')) {
-		pathBuffer.append('/');
-	}
-	String packPath= getElementName().replace('.', '/');
-	pathBuffer.append(packPath).append('/').append(JavadocConstants.PACKAGE_FILE_NAME);
+	IResource underlyingResource = resource();
+	// check whether this pkg can be opened
+	if (underlyingResource != null && !resourceExists(underlyingResource))
+		throw newDoesNotExistException_();
 
-	if (monitor != null && monitor.isCanceled()) throw new OperationCanceledException();
-	String contents = getURLContents(baseLocation, String.valueOf(pathBuffer));
-	if (monitor != null && monitor.isCanceled()) throw new OperationCanceledException();
-	if (contents == null) return null;
-	
-	contents = (new JavadocContents(contents)).getPackageDoc();
-	if (contents == null) contents = ""; //$NON-NLS-1$
-	synchronized (projectInfo.javadocCache) {
-		projectInfo.javadocCache.put(this, contents);
-	}
-	return contents;
+	// check that it is not excluded (https://bugs.eclipse.org/bugs/show_bug.cgi?id=138577)
+	if (getKind() == IPackageFragmentRoot.K_SOURCE && Util.isExcluded(this))
+		throw newDoesNotExistException_();
 }
 }

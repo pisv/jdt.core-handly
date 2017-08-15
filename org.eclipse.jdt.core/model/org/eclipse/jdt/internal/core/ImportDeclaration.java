@@ -38,9 +38,6 @@ public String getElementName() {
 		return this.name + ".*"; //$NON-NLS-1$
 	return this.name;
 }
-public String getNameWithoutStar() {
-	return this.name;
-}
 /**
  * @see IJavaElement
  */
@@ -78,6 +75,9 @@ public ISourceRange getNameRange() throws JavaModelException {
 	ImportDeclarationElementInfo info = (ImportDeclarationElementInfo) getElementInfo();
 	return info.getNameRange();
 }
+public String getNameWithoutStar() {
+	return this.name;
+}
 /*
  * @see JavaElement#getPrimaryElement(boolean)
  */
@@ -85,11 +85,6 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	CompilationUnit cu = (CompilationUnit)this.parent.getParent();
 	if (checkOwner && cu.isPrimary()) return this;
 	return cu.getImport(getElementName());
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append("import "); //$NON-NLS-1$
-	super.hToStringName(builder, context);
 }
 /**
  * Returns true if the import is on-demand (ends with ".*")
@@ -102,5 +97,10 @@ public boolean isOnDemand() {
 public String readableName() {
 
 	return null;
+}
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	builder.append("import "); //$NON-NLS-1$
+	super.toStringName_(builder, context);
 }
 }

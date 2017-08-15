@@ -42,6 +42,25 @@ class JarPackageFragment extends PackageFragment {
 protected JarPackageFragment(PackageFragmentRoot root, String[] names) {
 	super(root, names);
 }
+@Override
+public void buildStructure_(IContext context, IProgressMonitor pm) throws CoreException {
+	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
+	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root.getBody_();
+	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
+	if (entries == null)
+		throw newNotPresentException();
+	JarPackageFragmentInfo fragInfo = new JarPackageFragmentInfo();
+
+	// compute children
+	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
+
+	// compute non-Java resources
+	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
+
+	fragInfo.setIsStructureKnown(true);
+
+	context.get(NEW_ELEMENTS).put(this, fragInfo);
+}
 /**
  * Compute the children of this package fragment. Children of jar package fragments
  * can only be IClassFile (representing .class files).
@@ -172,25 +191,6 @@ public Object[] getNonJavaResources() throws JavaModelException {
 	} else {
 		return storedNonJavaResources();
 	}
-}
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
-	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root.hBody();
-	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
-	if (entries == null)
-		throw newNotPresentException();
-	JarPackageFragmentInfo fragInfo = new JarPackageFragmentInfo();
-
-	// compute children
-	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
-
-	// compute non-Java resources
-	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
-
-	fragInfo.setIsStructureKnown(true);
-
-	context.get(NEW_ELEMENTS).put(this, fragInfo);
 }
 protected boolean internalIsValidPackageName() {
 	return true;
