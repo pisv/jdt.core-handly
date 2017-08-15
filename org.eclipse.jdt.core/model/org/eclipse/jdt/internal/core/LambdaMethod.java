@@ -35,6 +35,16 @@ public class LambdaMethod extends SourceMethod {
 		this.key = key;
 	}
 	
+	@Override
+	public boolean _canEqual(Object obj) {
+		return obj instanceof LambdaMethod;
+	}
+
+	@Override
+	public Object _findBody() {
+		return this.elementInfo;
+	}
+
 	/**
 	 * @see IMethod
 	 */
@@ -102,16 +112,6 @@ public class LambdaMethod extends SourceMethod {
 	   return Util.combineHashCodes(super.hashCode(), this.sourceStart);
 	}
 	
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof LambdaMethod;
-	}
-
-	@Override
-	public Object hFindBody() {
-		return this.elementInfo;
-	}
-
 	public boolean isResolved() {
 		return true;  // we maintain enough information so as not to need another layer of abstraction.
 	}

@@ -654,7 +654,7 @@ public class AbstractJavaSearchTests extends ModifyingResourceTests implements I
 			if (anonymous) {
 				this.line.append("<anonymous>");
 			} else if (type.isLambda()) {
-				((LambdaExpression) type).hToStringName(this.line, EMPTY_CONTEXT);
+				((LambdaExpression) type)._toStringName(this.line, EMPTY_CONTEXT);
 			} else {
 				this.line.append(typeName);
 			}

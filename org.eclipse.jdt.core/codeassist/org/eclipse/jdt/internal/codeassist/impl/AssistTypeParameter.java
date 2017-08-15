@@ -24,7 +24,7 @@ public class AssistTypeParameter extends TypeParameter {
 	}
 
 	@Override
-	public Object hFindBody() {
+	public Object _findBody() {
 		return this.infoCache.get(this);
 	}
 }

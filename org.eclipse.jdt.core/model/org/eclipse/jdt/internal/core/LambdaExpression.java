@@ -59,6 +59,29 @@ public class LambdaExpression extends SourceType {
 		this.elementInfo.children = new IJavaElement[] { this.lambdaMethod };
 	}
 
+	@Override
+		public boolean _canEqual(Object obj) {
+			return obj instanceof LambdaExpression;
+	}
+
+	@Override
+	public Object _findBody() {
+		return this.elementInfo;
+	}
+
+	@Override
+	public IElement[] _getChildren() throws CoreException {
+		return new IElement[] { this.lambdaMethod };
+	}
+
+	@Override
+	public void _toStringName(StringBuilder builder, IContext context) {
+		super._toStringName(builder, context);
+		builder.append("<lambda #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
+	}
+
 	public TypeBinding findLambdaSuperType(org.eclipse.jdt.internal.compiler.ast.LambdaExpression lambdaExpression) {
 		// start from the specific type, ignoring type arguments:
 		TypeBinding original = lambdaExpression.resolvedType.original();
@@ -161,29 +184,6 @@ public class LambdaExpression extends SourceType {
 		return Util.combineHashCodes(super.hashCode(), this.sourceStart);
 	}
 	
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof LambdaExpression;
-}
-	
-	@Override
-	public IElement[] hChildren() throws CoreException {
-		return new IElement[] { this.lambdaMethod };
-	}
-
-	@Override
-	public Object hFindBody() {
-		return this.elementInfo;
-	}
-
-	@Override
-	public void hToStringName(StringBuilder builder, IContext context) {
-		super.hToStringName(builder, context);
-		builder.append("<lambda #"); //$NON-NLS-1$
-		builder.append(this.occurrenceCount);
-		builder.append(">"); //$NON-NLS-1$
-	}
-
 	protected char getHandleMementoDelimiter() {
 		return JavaElement.JEM_LAMBDA_EXPRESSION;
 	}

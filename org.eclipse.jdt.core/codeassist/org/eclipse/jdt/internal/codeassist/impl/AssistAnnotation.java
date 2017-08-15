@@ -24,7 +24,7 @@ public class AssistAnnotation extends Annotation {
 	}
 
 	@Override
-	public Object hFindBody() {
+	public Object _findBody() {
 		return this.infoCache.get(this);
 	}
 }

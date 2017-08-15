@@ -27,6 +27,13 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 		this.name = name;
 	}
 
+	@Override
+	public void _toStringName(StringBuilder builder, IContext context) {
+		builder.append('<');
+		builder.append(getElementName());
+		builder.append('>');
+	}
+
 	public String[] getBounds() throws JavaModelException {
 		TypeParameterElementInfo info = (TypeParameterElementInfo) getElementInfo();
 		return CharOperation.toStrings(info.bounds);
@@ -135,12 +142,5 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 	 */
 	public ITypeRoot getTypeRoot() {
 		return this.getDeclaringMember().getTypeRoot();
-	}
-
-	@Override
-	public void hToStringName(StringBuilder builder, IContext context) {
-		builder.append('<');
-		builder.append(getElementName());
-		builder.append('>');
 	}
 }

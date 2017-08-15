@@ -30,6 +30,16 @@ public class ResolvedBinaryType extends BinaryType {
 		this.uniqueKey = uniqueKey;
 	}
 
+	@Override
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		super._toStringBody(builder, body, context);
+		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
+			builder.append(" {key="); //$NON-NLS-1$
+			builder.append(this.getKey());
+			builder.append("}"); //$NON-NLS-1$
+		}
+	}
+
 	public String getFullyQualifiedParameterizedName() throws JavaModelException {
 		return getFullyQualifiedParameterizedName(getFullyQualifiedName('.'), this.uniqueKey);
 	}
@@ -44,16 +54,6 @@ public class ResolvedBinaryType extends BinaryType {
 	@Override
 	public String getKey(boolean forceOpen) throws JavaModelException {
 		return this.uniqueKey;
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, context);
-		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
-			builder.append(" {key="); //$NON-NLS-1$
-			builder.append(this.getKey());
-			builder.append("}"); //$NON-NLS-1$
-		}
 	}
 
 	/* (non-Javadoc)

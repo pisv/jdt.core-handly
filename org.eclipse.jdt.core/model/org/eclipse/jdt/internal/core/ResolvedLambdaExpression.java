@@ -24,6 +24,21 @@ public class ResolvedLambdaExpression extends LambdaExpression {
 		this.unresolved = unresolved;
 	}
 
+	@Override
+	public boolean _canEqual(Object obj) {
+		return obj instanceof ResolvedLambdaExpression;
+	}
+
+	@Override
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		super._toStringBody(builder, body, context);
+		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
+			builder.append(" {key="); //$NON-NLS-1$
+			builder.append(this.getKey());
+			builder.append("}"); //$NON-NLS-1$
+		}
+	}
+
 	public String getFullyQualifiedParameterizedName() throws JavaModelException {
 		return getFullyQualifiedParameterizedName(getFullyQualifiedName('.'), this.uniqueKey);
 	}
@@ -40,21 +55,6 @@ public class ResolvedLambdaExpression extends LambdaExpression {
 		return this.unresolved.equals(o);
 	}
 	
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof ResolvedLambdaExpression;
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, context);
-		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
-			builder.append(" {key="); //$NON-NLS-1$
-			builder.append(this.getKey());
-			builder.append("}"); //$NON-NLS-1$
-		}
-	}
-
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.internal.core.SourceType#isResolved()
 	 */

@@ -60,6 +60,32 @@ public class JavaModel extends Openable implements IJavaModel, IModel {
 protected JavaModel() throws Error {
 	super(null);
 }
+@Override
+public void _buildStructure(IContext context, IProgressMonitor monitor) {
+
+	// determine my children
+	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+	int length = projects.length;
+	List<IJavaProject> javaProjects = new ArrayList<>(length);
+	for (int i = 0; i < length; i++) {
+		IProject project = projects[i];
+		if (JavaProject.hasJavaNature(project)) {
+			javaProjects.add(getJavaProject(project));
+		}
+	}
+	JavaModelInfo info = new JavaModelInfo();
+	info.setChildren(javaProjects.toArray(NO_ELEMENTS));
+	info.setIsStructureKnown(true);
+	context.get(NEW_ELEMENTS).put(this, info);
+}
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	builder.append("Java Model"); //$NON-NLS-1$
+}
+@Override
+public void _validateExistence(IContext context) {
+	// always exists
+}
 /*
  * @see IJavaModel
  */
@@ -224,32 +250,6 @@ public IWorkspace getWorkspace() {
 public int hashCode() {
 	return System.identityHashCode(this);
 }
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor monitor) {
-
-	// determine my children
-	IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
-	int length = projects.length;
-	List<IJavaProject> javaProjects = new ArrayList<>(length);
-	for (int i = 0; i < length; i++) {
-		IProject project = projects[i];
-		if (JavaProject.hasJavaNature(project)) {
-			javaProjects.add(getJavaProject(project));
-		}
-	}
-	JavaModelInfo info = new JavaModelInfo();
-	info.setChildren(javaProjects.toArray(NO_ELEMENTS));
-	info.setIsStructureKnown(true);
-	context.get(NEW_ELEMENTS).put(this, info);
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append("Java Model"); //$NON-NLS-1$
-}
-@Override
-public void hValidateExistence(IContext context) {
-	// always exists
-}
 /**
  * @see IJavaModel
  */
@@ -268,7 +268,7 @@ public void refreshExternalArchives(IJavaElement[] elementsScope, IProgressMonit
 	if (elementsScope == null){
 		elementsScope = new IJavaElement[] { this };
 	}
-	hModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
+	_getModelManager().getDeltaProcessor().checkExternalArchiveChanges(elementsScope, monitor);
 }
 
 /**

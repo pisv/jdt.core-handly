@@ -24,12 +24,12 @@ public class AssistPackageDeclaration extends PackageDeclaration {
 		this.infoCache = infoCache;
 	}
 
-	public IAnnotation getAnnotation(String name) {
-		return new AssistAnnotation(this, name, this.infoCache);
+	@Override
+	public Object _findBody() {
+		return this.infoCache.get(this);
 	}
 
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
+	public IAnnotation getAnnotation(String name) {
+		return new AssistAnnotation(this, name, this.infoCache);
 	}
 }

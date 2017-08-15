@@ -34,6 +34,30 @@ protected Initializer(JavaElement parent, int count) {
 		throw new IllegalArgumentException();
 	this.occurrenceCount = count;
 }
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		builder.append("<initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append("> (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		builder.append("<initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
+	} else {
+		try {
+			builder.append("<"); //$NON-NLS-1$
+			if (Flags.isStatic(getFlags())) {
+				builder.append("static "); //$NON-NLS-1$
+			}
+		builder.append("initializer #"); //$NON-NLS-1$
+		builder.append(this.occurrenceCount);
+		builder.append(">"); //$NON-NLS-1$
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 /**
  * @see IJavaElement
  */
@@ -56,30 +80,6 @@ protected char getHandleMementoDelimiter() {
 }
 public int hashCode() {
 	return Util.combineHashCodes(this.parent.hashCode(), this.occurrenceCount);
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		builder.append("<initializer #"); //$NON-NLS-1$
-		builder.append(this.occurrenceCount);
-		builder.append("> (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		builder.append("<initializer #"); //$NON-NLS-1$
-		builder.append(this.occurrenceCount);
-		builder.append(">"); //$NON-NLS-1$
-	} else {
-		try {
-			builder.append("<"); //$NON-NLS-1$
-			if (Flags.isStatic(getFlags())) {
-				builder.append("static "); //$NON-NLS-1$
-			}
-		builder.append("initializer #"); //$NON-NLS-1$
-		builder.append(this.occurrenceCount);
-		builder.append(">"); //$NON-NLS-1$
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 /**
  */

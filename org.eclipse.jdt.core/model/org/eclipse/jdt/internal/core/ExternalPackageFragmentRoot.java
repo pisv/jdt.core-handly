@@ -50,6 +50,16 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 		this.externalPath = externalPath == null ? linkedFolder.getLocation() : externalPath;
 	}
 
+	@Override
+	public boolean _canEqual(Object obj) {
+		return obj instanceof ExternalPackageFragmentRoot;
+	}
+
+	@Override
+	public void _toStringAncestors(StringBuilder builder, IContext context) {
+		// don't show project as it is irrelevant for external folders.
+	}
+
 	/**
 	 * An external class folder is always K_BINARY.
 	 */
@@ -98,16 +108,6 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 	}
 	public int hashCode() {
 		return this.externalPath.hashCode();
-	}
-
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof ExternalPackageFragmentRoot;
-	}
-
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		// don't show project as it is irrelevant for external folders.
 	}
 
 	/**

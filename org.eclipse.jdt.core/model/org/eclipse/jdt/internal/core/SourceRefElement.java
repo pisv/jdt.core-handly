@@ -45,6 +45,49 @@ public abstract class SourceRefElement extends JavaElement implements ISourceRef
 protected SourceRefElement(JavaElement parent) {
 	super(parent);
 }
+@Override
+public int _getOccurrenceCount() {
+	return this.occurrenceCount;
+}
+@Override
+public ISourceElementInfo _getSourceElementInfo() throws CoreException {
+	IJavaElement[] children = getChildren();
+	ISourceRange sourceRange = getSourceRange();
+	ISourceRange nameRange = getNameRange();
+	return new ISourceElementInfo() {
+		
+		@Override
+		public ISnapshot getSnapshot() {
+			return null;
+		}
+		@Override
+		public TextRange getIdentifyingRange() {
+			if (nameRange != null && SourceRange.isAvailable(nameRange))
+				return new TextRange(nameRange.getOffset(), nameRange.getLength());
+			return null;
+		}
+		@Override
+		public TextRange getFullRange() {
+			if (sourceRange != null && SourceRange.isAvailable(sourceRange))
+				return new TextRange(sourceRange.getOffset(), sourceRange.getLength());
+			return null;
+		}
+		@Override
+		public ISourceConstruct[] getChildren() {
+			ISourceConstruct[] result = new ISourceConstruct[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		@Override
+		public <T> T get(Property<T> property) {
+			return null;
+		}
+	};
+}
+@Override
+public void _incrementOccurrenceCount() {
+	this.occurrenceCount++;
+}
 /**
  * @see ISourceManipulation
  */
@@ -144,7 +187,7 @@ public IJavaElement getHandleUpdatingCountFromMemento(MementoTokenizer memento, 
  * @see IMember#getOccurrenceCount()
  */
 public final int getOccurrenceCount() {
-	return hOccurrenceCount();
+	return _getOccurrenceCount();
 }
 /*
  * @see IJavaElement
@@ -195,49 +238,6 @@ public boolean hasChildren() throws JavaModelException {
 }
 public int hashCode() {
 	return Util.combineHashCodes(super.hashCode(), this.occurrenceCount);
-}
-@Override
-public void hIncrementOccurrenceCount() {
-	this.occurrenceCount++;
-}
-@Override
-public int hOccurrenceCount() {
-	return this.occurrenceCount;
-}
-@Override
-public ISourceElementInfo hSourceElementInfo() throws CoreException {
-	IJavaElement[] children = getChildren();
-	ISourceRange sourceRange = getSourceRange();
-	ISourceRange nameRange = getNameRange();
-	return new ISourceElementInfo() {
-		
-		@Override
-		public ISnapshot getSnapshot() {
-			return null;
-		}
-		@Override
-		public TextRange getIdentifyingRange() {
-			if (nameRange != null && SourceRange.isAvailable(nameRange))
-				return new TextRange(nameRange.getOffset(), nameRange.getLength());
-			return null;
-		}
-		@Override
-		public TextRange getFullRange() {
-			if (sourceRange != null && SourceRange.isAvailable(sourceRange))
-				return new TextRange(sourceRange.getOffset(), sourceRange.getLength());
-			return null;
-		}
-		@Override
-		public ISourceConstruct[] getChildren() {
-			ISourceConstruct[] result = new ISourceConstruct[children.length];
-			System.arraycopy(children, 0, result, 0, children.length);
-			return result;
-		}
-		@Override
-		public <T> T get(Property<T> property) {
-			return null;
-		}
-	};
 }
 /**
  * @see IJavaElement

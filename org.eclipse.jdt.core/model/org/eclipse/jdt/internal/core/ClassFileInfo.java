@@ -443,9 +443,9 @@ void removeBinaryChildren() {
 		for (int i = 0; i <this.binaryChildren.length; i++) {
 			JavaElement child = this.binaryChildren[i];
 			if (child instanceof BinaryType) {
-				((JavaElement)child.getParent()).hRemove(EMPTY_CONTEXT);
+				((JavaElement)child.getParent())._remove(EMPTY_CONTEXT);
 			} else {
-				child.hRemove(EMPTY_CONTEXT);
+				child._remove(EMPTY_CONTEXT);
 			}
 		}
 		this.binaryChildren = JavaElement.NO_ELEMENTS;
@@ -453,7 +453,7 @@ void removeBinaryChildren() {
 	if (this.typeParameters != null) {
 		for (int i = 0; i <this.typeParameters.length; i++) {
 			TypeParameter typeParameter = (TypeParameter) this.typeParameters[i];
-			typeParameter.hRemove(EMPTY_CONTEXT);
+			typeParameter._remove(EMPTY_CONTEXT);
 		}
 		this.typeParameters = TypeParameter.NO_TYPE_PARAMETERS;
 	}

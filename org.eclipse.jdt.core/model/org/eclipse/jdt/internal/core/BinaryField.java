@@ -33,6 +33,27 @@ import org.eclipse.jdt.internal.compiler.lookup.Binding;
 protected BinaryField(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean _canEqual(Object obj) {
+	return obj instanceof BinaryField;
+}
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		_toStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		_toStringName(builder, context);
+	} else {
+		try {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+			_toStringName(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 public IAnnotation[] getAnnotations() throws JavaModelException {
 	IBinaryField info = (IBinaryField) getElementInfo();
 	IBinaryAnnotation[] binaryAnnotations = info.getAnnotations();
@@ -77,27 +98,6 @@ public String getTypeSignature() throws JavaModelException {
 		return new String(ClassFile.translatedName(genericSignature));
 	}
 	return new String(ClassFile.translatedName(info.getTypeName()));
-}
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof BinaryField;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		try {
-			builder.append(Signature.toString(getTypeSignature()));
-			builder.append(" "); //$NON-NLS-1$
-			hToStringName(builder, context);
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#isEnumConstant()

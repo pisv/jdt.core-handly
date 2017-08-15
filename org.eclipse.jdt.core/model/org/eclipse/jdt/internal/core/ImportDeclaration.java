@@ -33,6 +33,11 @@ protected ImportDeclaration(ImportContainer parent, String name, boolean isOnDem
 	this.name = name;
 	this.isOnDemand = isOnDemand;
 }
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	builder.append("import "); //$NON-NLS-1$
+	super._toStringName(builder, context);
+}
 public String getElementName() {
 	if (this.isOnDemand)
 		return this.name + ".*"; //$NON-NLS-1$
@@ -85,11 +90,6 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	CompilationUnit cu = (CompilationUnit)this.parent.getParent();
 	if (checkOwner && cu.isPrimary()) return this;
 	return cu.getImport(getElementName());
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append("import "); //$NON-NLS-1$
-	super.hToStringName(builder, context);
 }
 /**
  * Returns true if the import is on-demand (ends with ".*")

@@ -152,11 +152,100 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	protected JavaElement(JavaElement parent) throws IllegalArgumentException {
 		this.parent = parent;
 	}
+	@Override
+	public boolean _canEqual(Object obj) {
+		if (!(obj instanceof JavaElement)) return false;
+		return getElementType() == ((JavaElement) obj).getElementType();
+	}
+	@Override
+	public IElement[] _getChildren(Object body) {
+		if (body instanceof JavaElementInfo) {
+			IJavaElement[] children = ((JavaElementInfo) body).getChildren();
+			IElement[] result = new IElement[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		else {
+			return Body.NO_CHILDREN;
+		}
+	}
+	@Override
+	public final JavaElementManager _getElementManager() {
+		return _getModelManager().getElementManager();
+	}
+	@Override
+	public final JavaModelManager _getModelManager() {
+		return JavaModelManager.getJavaModelManager();
+	}
+	@Override
+	public final String _getName() {
+		return getElementName();
+	}
+	@Override
+	public final IElement _getParent() {
+		return this.parent;
+	}
+	@Override
+	public final IResource _getResource() {
+		return getResource();
+	}
+	@Override
+	public final CoreException _newDoesNotExistException() {
+		return newNotPresentException();
+	}
+//	@Override
+//	public void _remove(IContext context) {
+//		synchronized (_getElementManager()) {
+//			Object body = _peekAtBody();
+//			if (body != null) {
+//				boolean wasVerbose = false;
+//				try {
+//					if (JavaModelCache.VERBOSE) {
+//						String elementType;
+//						switch (getElementType()) {
+//							case IJavaElement.JAVA_PROJECT:
+//								elementType = "project"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
+//								elementType = "root"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.PACKAGE_FRAGMENT:
+//								elementType = "package"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.CLASS_FILE:
+//								elementType = "class file"; //$NON-NLS-1$
+//								break;
+//							case IJavaElement.COMPILATION_UNIT:
+//								elementType = "compilation unit"; //$NON-NLS-1$
+//								break;
+//							default:
+//								elementType = "element"; //$NON-NLS-1$
+//						}
+//						System.out.println(
+//								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+//						wasVerbose = true;
+//						JavaModelCache.VERBOSE = false;
+//					}
+//					IElementImplSupport.super._remove(context);
+//					if (wasVerbose) {
+//						System.out.println(_getElementManager().cacheToString("-> ")); //$NON-NLS-1$
+//					}
+//				} finally {
+//					JavaModelCache.VERBOSE = wasVerbose;
+//				}
+//			}
+//		}
+//	}
+	@Override
+	public void _toStringAncestors(StringBuilder builder, IContext context) {
+		IElementImplSupport.super._toStringAncestors(builder,
+			with(of(SHOW_RESOLVED_INFO, false), context));
+	}
 	/**
 	 * @see IOpenable
 	 */
 	public final void close() {
-		hClose();
+		_close();
 	}
 	/**
 	 * Returns true if this handle represents the same Java element
@@ -177,7 +266,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 		if (!(o instanceof JavaElement))
 			return false;
 		JavaElement other = (JavaElement) o;
-		if (!other.hCanEqual(this))
+		if (!other._canEqual(this))
 			return false;
 		return getElementName().equals(other.getElementName()) &&
 				this.parent.equals(other.parent);
@@ -221,7 +310,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * @see IJavaElement
 	 */
 	public final boolean exists() {
-		return hExists();
+		return _exists();
 	}
 
 	/**
@@ -250,7 +339,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public final IJavaElement[] getChildren() throws JavaModelException {
 		IElement[] src;
 		try {
-			src = hChildren();
+			src = _getChildren();
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -268,7 +357,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public ArrayList getChildrenOfType(int type) throws JavaModelException {
 		IElement[] children;
 		try {
-			children = hChildren();
+			children = _getChildren();
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -313,7 +402,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public final Object getElementInfo(IProgressMonitor monitor) throws JavaModelException {
 		try {
-			return hBody(EMPTY_CONTEXT, monitor);
+			return _getBody(EMPTY_CONTEXT, monitor);
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -395,7 +484,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * hierarchy of this element.
 	 */
 	public final IOpenable getOpenableParent() {
-		return (IOpenable)hOpenableParent();
+		return (IOpenable)_getOpenableParent();
 	}
 	/**
 	 * @see IJavaElement
@@ -514,7 +603,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	public boolean hasChildren() throws JavaModelException {
 		// if I am not open, return true to avoid opening (case of a Java project, a compilation unit or a class file).
 		// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=52474
-		Object body = hFindBody();
+		Object body = _findBody();
 		if (body instanceof JavaElementInfo) {
 			return ((JavaElementInfo)body).getChildren().length > 0;
 		} else {
@@ -530,95 +619,6 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public int hashCode() {
 		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
-	}
-	@Override
-	public boolean hCanEqual(Object obj) {
-		if (!(obj instanceof JavaElement)) return false;
-		return getElementType() == ((JavaElement) obj).getElementType();
-	}
-	@Override
-	public IElement[] hChildren(Object body) {
-		if (body instanceof JavaElementInfo) {
-			IJavaElement[] children = ((JavaElementInfo) body).getChildren();
-			IElement[] result = new IElement[children.length];
-			System.arraycopy(children, 0, result, 0, children.length);
-			return result;
-		}
-		else {
-			return Body.NO_CHILDREN;
-		}
-	}
-	@Override
-	public final CoreException hDoesNotExistException() {
-		return newNotPresentException();
-	}
-	@Override
-	public final JavaElementManager hElementManager() {
-		return (JavaElementManager) IElementImplSupport.super.hElementManager();
-	}
-	@Override
-	public final JavaModelManager hModelManager() {
-		return JavaModelManager.getJavaModelManager();
-	}
-	@Override
-	public final String hName() {
-		return getElementName();
-	}
-	@Override
-	public final IElement hParent() {
-		return this.parent;
-	}
-//	@Override
-//	public void hRemove(IContext context) {
-//		synchronized (hElementManager()) {
-//			Object body = hPeekAtBody();
-//			if (body != null) {
-//				boolean wasVerbose = false;
-//				try {
-//					if (JavaModelCache.VERBOSE) {
-//						String elementType;
-//						switch (getElementType()) {
-//							case IJavaElement.JAVA_PROJECT:
-//								elementType = "project"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-//								elementType = "root"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.PACKAGE_FRAGMENT:
-//								elementType = "package"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.CLASS_FILE:
-//								elementType = "class file"; //$NON-NLS-1$
-//								break;
-//							case IJavaElement.COMPILATION_UNIT:
-//								elementType = "compilation unit"; //$NON-NLS-1$
-//								break;
-//							default:
-//								elementType = "element"; //$NON-NLS-1$
-//						}
-//						System.out.println(
-//								Thread.currentThread() + " CLOSING " + elementType + " " + toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
-//						wasVerbose = true;
-//						JavaModelCache.VERBOSE = false;
-//					}
-//					IElementImplSupport.super.hRemove(context);
-//					if (wasVerbose) {
-//						System.out.println(hElementManager().cacheToString("-> ")); //$NON-NLS-1$
-//					}
-//				} finally {
-//					JavaModelCache.VERBOSE = wasVerbose;
-//				}
-//			}
-//		}
-//	}
-	@Override
-	public final IResource hResource() {
-		return getResource();
-	}
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		IElementImplSupport.super.hToStringAncestors(builder,
-			with(of(SHOW_RESOLVED_INFO, false), context));
 	}
 	/**
 	 * Returns true if this element is an ancestor of the given element,
@@ -672,14 +672,14 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public final String toDebugString() {
 		StringBuilder builder = new StringBuilder();
-		hToStringBody(builder, NO_BODY, Contexts.EMPTY_CONTEXT);
+		_toStringBody(builder, NO_BODY, Contexts.EMPTY_CONTEXT);
 		return builder.toString();
 	}
 	/**
 	 *  Debugging purposes
 	 */
 	public final String toString() {
-		return hToString(EMPTY_CONTEXT);
+		return _toString(EMPTY_CONTEXT);
 	}
 	/**
 	 *  Debugging purposes
@@ -691,7 +691,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 *  Debugging purposes
 	 */
 	public final String toStringWithAncestors(boolean showResolvedInfo) {
-		return hToString(with(of(FORMAT_STYLE, MEDIUM), of(SHOW_RESOLVED_INFO, showResolvedInfo)));
+		return _toString(with(of(FORMAT_STYLE, MEDIUM), of(SHOW_RESOLVED_INFO, showResolvedInfo)));
 	}
 
 	protected URL getJavadocBaseLocation() throws JavaModelException {

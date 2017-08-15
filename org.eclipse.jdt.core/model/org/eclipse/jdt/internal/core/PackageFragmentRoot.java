@@ -55,6 +55,45 @@ protected PackageFragmentRoot(IResource resource, JavaProject project) {
 	this.resource = resource;
 }
 
+@Override
+public void _buildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	PackageFragmentRootInfo info = createElementInfo();
+	IResource underlyingResource = resource();
+	info.setRootKind(determineKind(underlyingResource));
+	computeChildren(info, underlyingResource);
+	context.get(NEW_ELEMENTS).put(this, info);
+}
+
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	IPath path = getPath();
+	if (isExternal()) {
+		builder.append(path.toOSString());
+	} else if (getJavaProject().getElementName().equals(path.segment(0))) {
+		if (path.segmentCount() == 1) {
+			builder.append("<project root>"); //$NON-NLS-1$
+		} else {
+			builder.append(path.removeFirstSegments(1).makeRelative());
+		}
+	} else {
+		builder.append(path);
+	}
+	if (body == null) {
+		builder.append(" (not open)"); //$NON-NLS-1$
+	}
+}
+
+@Override
+public void _validateExistence(IContext context) throws CoreException {
+	// check whether this pkg fragment root can be opened
+	IStatus status = validateOnClasspath();
+	if (!status.isOK())
+		throw newJavaModelException(status);
+	IResource underlyingResource = resource();
+	if (!resourceExists(underlyingResource))
+		throw _newDoesNotExistException();
+}
+
 /**
  * @see IPackageFragmentRoot
  */
@@ -227,7 +266,7 @@ protected void computeFolderChildren(IContainer folder, boolean isIncluded, Stri
 			String sourceLevel = otherJavaProject.getOption(JavaCore.COMPILER_SOURCE, true);
 			String complianceLevel = otherJavaProject.getOption(JavaCore.COMPILER_COMPLIANCE, true);
 			JavaProject javaProject = (JavaProject) getJavaProject();
-			JavaModelManager manager = hModelManager();
+			JavaModelManager manager = _getModelManager();
 			for (int i = 0; i < length; i++) {
 				IResource member = members[i];
 				String memberName = member.getName();
@@ -486,10 +525,10 @@ public int getKind() throws JavaModelException {
  * to speed things up
  */
 int internalKind() throws JavaModelException {
-	PackageFragmentRootInfo info = (PackageFragmentRootInfo)hPeekAtBody();
+	PackageFragmentRootInfo info = (PackageFragmentRootInfo) _peekAtBody();
 	if (info == null) {
 		try {
-			info = (PackageFragmentRootInfo) hOpen(EMPTY_CONTEXT, null);
+			info = (PackageFragmentRootInfo) _open(EMPTY_CONTEXT, null);
 		} catch (CoreException e) {
 			throw Util.toJavaModelException(e);
 		}
@@ -712,45 +751,6 @@ public boolean hasChildren() throws JavaModelException {
 
 public int hashCode() {
 	return resource().hashCode();
-}
-
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	PackageFragmentRootInfo info = createElementInfo();
-	IResource underlyingResource = resource();
-	info.setRootKind(determineKind(underlyingResource));
-	computeChildren(info, underlyingResource);
-	context.get(NEW_ELEMENTS).put(this, info);
-}
-
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	IPath path = getPath();
-	if (isExternal()) {
-		builder.append(path.toOSString());
-	} else if (getJavaProject().getElementName().equals(path.segment(0))) {
-		if (path.segmentCount() == 1) {
-			builder.append("<project root>"); //$NON-NLS-1$
-		} else {
-			builder.append(path.removeFirstSegments(1).makeRelative());
-		}
-	} else {
-		builder.append(path);
-	}
-	if (body == null) {
-		builder.append(" (not open)"); //$NON-NLS-1$
-	}
-}
-
-@Override
-public void hValidateExistence(IContext context) throws CoreException {
-	// check whether this pkg fragment root can be opened
-	IStatus status = validateOnClasspath();
-	if (!status.isOK())
-		throw newJavaModelException(status);
-	IResource underlyingResource = resource();
-	if (!resourceExists(underlyingResource))
-		throw hDoesNotExistException();
 }
 
 public boolean ignoreOptionalProblems() {

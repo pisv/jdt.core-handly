@@ -49,6 +49,61 @@ public int localOccurrenceCount = 1;
 protected SourceType(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean _canEqual(Object obj) {
+	return obj instanceof SourceType;
+}
+@Override
+public void _removing(Object body) {
+	SourceTypeElementInfo elementInfo = (SourceTypeElementInfo) body;
+	ITypeParameter[] typeParameters = elementInfo.typeParameters;
+	for (int i = 0, length = typeParameters.length; i < length; i++) {
+		((TypeParameter)typeParameters[i])._remove(EMPTY_CONTEXT);
+	}
+	super._removing(body);
+}
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		if (isAnonymous()) {
+			builder.append("<anonymous #"); //$NON-NLS-1$
+			builder.append(this.occurrenceCount);
+			builder.append(">"); //$NON-NLS-1$
+		} else {
+			_toStringName(builder, context);
+		}
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		if (isAnonymous()) {
+			builder.append("<anonymous #"); //$NON-NLS-1$
+			builder.append(this.occurrenceCount);
+			builder.append(">"); //$NON-NLS-1$
+		} else {
+			_toStringName(builder, context);
+		}
+	} else {
+		try {
+			if (isEnum()) {
+				builder.append("enum "); //$NON-NLS-1$
+			} else if (isAnnotation()) {
+				builder.append("@interface "); //$NON-NLS-1$
+			} else if (isInterface()) {
+				builder.append("interface "); //$NON-NLS-1$
+			} else {
+				builder.append("class "); //$NON-NLS-1$
+			}
+			if (isAnonymous()) {
+				builder.append("<anonymous #"); //$NON-NLS-1$
+				builder.append(this.occurrenceCount);
+				builder.append(">"); //$NON-NLS-1$
+			} else {
+				_toStringName(builder, context);
+			}
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 /**
  * @see IType
  * @deprecated
@@ -566,61 +621,6 @@ public IType[] getTypes() throws JavaModelException {
 	list.toArray(array);
 	return array;
 }
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof SourceType;
-}
-@Override
-public void hRemoving(Object body) {
-	SourceTypeElementInfo elementInfo = (SourceTypeElementInfo) body;
-	ITypeParameter[] typeParameters = elementInfo.typeParameters;
-	for (int i = 0, length = typeParameters.length; i < length; i++) {
-		((TypeParameter)typeParameters[i]).hRemove(EMPTY_CONTEXT);
-	}
-	super.hRemoving(body);
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		if (isAnonymous()) {
-			builder.append("<anonymous #"); //$NON-NLS-1$
-			builder.append(this.occurrenceCount);
-			builder.append(">"); //$NON-NLS-1$
-		} else {
-			hToStringName(builder, context);
-		}
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		if (isAnonymous()) {
-			builder.append("<anonymous #"); //$NON-NLS-1$
-			builder.append(this.occurrenceCount);
-			builder.append(">"); //$NON-NLS-1$
-		} else {
-			hToStringName(builder, context);
-		}
-	} else {
-		try {
-			if (isEnum()) {
-				builder.append("enum "); //$NON-NLS-1$
-			} else if (isAnnotation()) {
-				builder.append("@interface "); //$NON-NLS-1$
-			} else if (isInterface()) {
-				builder.append("interface "); //$NON-NLS-1$
-			} else {
-				builder.append("class "); //$NON-NLS-1$
-			}
-			if (isAnonymous()) {
-				builder.append("<anonymous #"); //$NON-NLS-1$
-				builder.append(this.occurrenceCount);
-				builder.append(">"); //$NON-NLS-1$
-			} else {
-				hToStringName(builder, context);
-			}
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
-}
 /**
  * @see IType#isAnonymous()
  */
@@ -782,7 +782,7 @@ public ITypeHierarchy newSupertypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), false);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -800,7 +800,7 @@ public ITypeHierarchy newTypeHierarchy(IJavaProject project, WorkingCopyOwner ow
 	if (project == null) {
 		throw new IllegalArgumentException(Messages.hierarchy_nullProject);
 	}
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	ICompilationUnit[] projectWCs = null;
 	if (workingCopies != null) {
 		int length = workingCopies.length;
@@ -870,7 +870,7 @@ public ITypeHierarchy newTypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), true);
 	op.runOperation(monitor);
 	return op.getResult();

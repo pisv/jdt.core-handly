@@ -194,6 +194,24 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 			open(null);
 		}
 
+		@Override
+		public void _buildStructure(IContext context, IProgressMonitor monitor) throws CoreException {
+		}
+
+		@Override
+		public void _close(IContext context) {
+			CloseHint hint = context.get(CLOSE_HINT);
+			if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
+				return;
+			// Closes this element and removes if from the cache.
+			this.isOpen = false;
+			this.cache.remove(this);
+		}
+
+		@Override
+		public void _validateExistence(IContext context) throws CoreException {
+		}
+
 		public boolean equals(Object o) {
 			return this == o;
 		}
@@ -225,24 +243,6 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 
 		public boolean hasUnsavedChanges() {
 			return this.buffer.hasUnsavedChanges();
-		}
-
-		@Override
-		public void hBuildStructure(IContext context, IProgressMonitor monitor) throws CoreException {
-		}
-
-		@Override
-		public void hClose(IContext context) {
-			CloseHint hint = context.get(CLOSE_HINT);
-			if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
-				return;
-			// Closes this element and removes if from the cache.
-			this.isOpen = false;
-			this.cache.remove(this);
-		}
-
-		@Override
-		public void hValidateExistence(IContext context) throws CoreException {
 		}
 
 		public boolean isConsistent() {

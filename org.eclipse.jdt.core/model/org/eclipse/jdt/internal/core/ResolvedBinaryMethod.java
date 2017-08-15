@@ -29,6 +29,15 @@ public class ResolvedBinaryMethod extends BinaryMethod {
 		super(parent, name, parameterTypes);
 		this.uniqueKey = uniqueKey;
 	}
+	@Override
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		super._toStringBody(builder, body, context);
+		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
+			builder.append(" {key="); //$NON-NLS-1$
+			builder.append(this.getKey());
+			builder.append("}"); //$NON-NLS-1$
+		}
+	}
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.internal.core.BinaryMethod#getKey()
 	 */
@@ -39,16 +48,6 @@ public class ResolvedBinaryMethod extends BinaryMethod {
 	@Override
 	public String getKey(boolean forceOpen) throws JavaModelException {
 		return this.uniqueKey;
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, context);
-		if (context.getOrDefault(SHOW_RESOLVED_INFO)) {
-			builder.append(" {key="); //$NON-NLS-1$
-			builder.append(this.getKey());
-			builder.append("}"); //$NON-NLS-1$
-		}
 	}
 
 	/* (non-Javadoc)

@@ -65,6 +65,34 @@ protected BinaryMethod(JavaElement parent, String name, String[] paramTypes) {
 		this.parameterTypes= paramTypes;
 	}
 }
+@Override
+public boolean _canEqual(Object obj) {
+	return obj instanceof BinaryMethod;
+}
+@Override
+public void _toStringBody(StringBuilder builder, Object info, IContext context) {
+	if (info == null) {
+		_toStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (info == NO_BODY) {
+		_toStringName(builder, context);
+	} else {
+		IBinaryMethod methodInfo = (IBinaryMethod) info;
+		int flags = methodInfo.getModifiers();
+		if (Flags.isStatic(flags)) {
+			builder.append("static "); //$NON-NLS-1$
+		}
+		if (!methodInfo.isConstructor()) {
+			builder.append(Signature.toString(getReturnType(methodInfo)));
+			builder.append(' ');
+		}
+		toStringName(builder, flags);
+	}
+}
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	toStringName(builder, 0);
+}
 public boolean equals(Object o) {
 	if (!(o instanceof BinaryMethod)) return false;
 	return super.equals(o) && Util.equalArraysOrNull(getErasedParameterTypes(), ((BinaryMethod)o).getErasedParameterTypes());
@@ -292,7 +320,7 @@ public String[] getParameterNames() throws JavaModelException {
 		}
 		JavadocContents javadocContents = null;
 		IType declaringType = getDeclaringType();
-		PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+		PerProjectInfo projectInfo = _getModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
 		synchronized (projectInfo.javadocCache) {
 			javadocContents = (JavadocContents) projectInfo.javadocCache.get(declaringType);
 			if (javadocContents == null) {
@@ -593,34 +621,6 @@ public int hashCode() {
 	    hash = Util.combineHashCodes(hash, getErasedParameterType(i).hashCode());
 	}
 	return hash;
-}
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof BinaryMethod;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object info, IContext context) {
-	if (info == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (info == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		IBinaryMethod methodInfo = (IBinaryMethod) info;
-		int flags = methodInfo.getModifiers();
-		if (Flags.isStatic(flags)) {
-			builder.append("static "); //$NON-NLS-1$
-		}
-		if (!methodInfo.isConstructor()) {
-			builder.append(Signature.toString(getReturnType(methodInfo)));
-			builder.append(' ');
-		}
-		toStringName(builder, flags);
-	}
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	toStringName(builder, 0);
 }
 private void toStringName(StringBuilder builder, int flags) {
 	builder.append(getElementName());

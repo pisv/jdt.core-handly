@@ -67,6 +67,18 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 		this.jarPath = resource.getFullPath();
 	}
 
+	@Override
+	public boolean _canEqual(Object obj) {
+		return obj instanceof JarPackageFragmentRoot;
+	}
+	@Override
+	public void _toStringAncestors(StringBuilder builder, IContext context) {
+		if (isExternal())
+			// don't show project as it is irrelevant for external jar files.
+			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
+			return;
+		super._toStringAncestors(builder, context);
+	}
 	/**
 	 * Compute the package fragment children of this package fragment root.
 	 * These are all of the directory zip entries, and any directories implied
@@ -110,7 +122,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 				throw new JavaModelException(e);
 			}
 		} finally {
-			hModelManager().closeZipFile(jar);
+			_getModelManager().closeZipFile(jar);
 		}
 
 		info.setChildren(children);
@@ -153,7 +165,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	 * @exception CoreException if an error occurs accessing the jar
 	 */
 	public ZipFile getJar() throws CoreException {
-		return hModelManager().getZipFile(getPath());
+		return _getModelManager().getZipFile(getPath());
 	}
 	/**
 	 * @see IPackageFragmentRoot
@@ -213,18 +225,6 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public int hashCode() {
 		return this.jarPath.hashCode();
 	}
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof JarPackageFragmentRoot;
-	}
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		if (isExternal())
-			// don't show project as it is irrelevant for external jar files.
-			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
-			return;
-		super.hToStringAncestors(builder, context);
-	}
 	private void initRawPackageInfo(HashtableOfArrayToObject rawPackageInfo, String entryName, boolean isDirectory, String compliance) {
 		int lastSeparator = isDirectory ? entryName.length()-1 : entryName.lastIndexOf('/');
 		String[] pkgName = Util.splitOn('/', entryName, 0, lastSeparator);
@@ -236,7 +236,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 			if (existing != null) break;
 			existingLength--;
 		}
-		JavaModelManager manager = hModelManager();
+		JavaModelManager manager = _getModelManager();
 		for (int i = existingLength; i < length; i++) {
 			// sourceLevel must be null because we know nothing about it based on a jar file
 			if (Util.isValidFolderNameForPackage(pkgName[i], null, compliance)) {

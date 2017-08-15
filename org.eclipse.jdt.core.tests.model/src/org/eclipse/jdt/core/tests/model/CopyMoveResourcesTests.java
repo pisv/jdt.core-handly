@@ -903,7 +903,7 @@ public void testMoveCU05() throws CoreException {
 							+ "		p1[*]: {CHILDREN}\n"
 							+ "			X.java[-]: {MOVED_TO(Y.java [in p2 [in src [in P]]])}\n"
 							+ "		p2[*]: {CHILDREN}\n"
-							+ "			Y.java[*]: {CHILDREN | FINE GRAINED | PRIMARY RESOURCE}\n"
+							+ "			Y.java[*]: {CHILDREN | CONTENT | FINE GRAINED | PRIMARY RESOURCE}\n"
 							+ "				Y[+]: {MOVED_FROM(X [in X.java [in p1 [in src [in P]]]])}", listener);
 	}
 	finally {

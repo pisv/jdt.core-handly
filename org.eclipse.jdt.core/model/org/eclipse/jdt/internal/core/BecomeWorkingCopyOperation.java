@@ -13,10 +13,10 @@
 package org.eclipse.jdt.internal.core;
 
 import static org.eclipse.handly.context.Contexts.*;
+import static org.eclipse.handly.model.impl.IElementImplExtension.FORCE_OPEN;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.handly.model.impl.IElementImplExtension;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.internal.core.util.Util;
 
@@ -42,7 +42,7 @@ public class BecomeWorkingCopyOperation extends JavaModelOperation {
 		CompilationUnit workingCopy = getWorkingCopy();
 		JavaModelManager.getJavaModelManager().getPerWorkingCopyInfo(workingCopy, true/*create if needed*/, true/*record usage*/, this.problemRequestor);
 		try {
-			workingCopy.hOpen(of(IElementImplExtension.FORCE_OPEN, true), this.progressMonitor);
+			workingCopy._open(of(FORCE_OPEN, true), this.progressMonitor);
 		} catch (CoreException e) {
 			Util.toJavaModelException(e);
 		}

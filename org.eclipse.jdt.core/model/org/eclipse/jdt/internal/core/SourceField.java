@@ -27,6 +27,27 @@ public class SourceField extends NamedMember implements IField {
 protected SourceField(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean _canEqual(Object obj) {
+	return obj instanceof SourceField;
+}
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		_toStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		_toStringName(builder, context);
+	} else {
+		try {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+			_toStringName(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
 public ASTNode findNode(org.eclipse.jdt.core.dom.CompilationUnit ast) {
 	// For field declarations, a variable declaration fragment is returned
 	// Return the FieldDeclaration instead
@@ -131,27 +152,6 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 public String getTypeSignature() throws JavaModelException {
 	SourceFieldElementInfo info = (SourceFieldElementInfo) getElementInfo();
 	return info.getTypeSignature();
-}
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof SourceField;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		try {
-			builder.append(Signature.toString(getTypeSignature()));
-			builder.append(" "); //$NON-NLS-1$
-			hToStringName(builder, context);
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
 }
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#isEnumConstant()

@@ -37,6 +37,16 @@ public class AssistSourceField extends ResolvedSourceField {
 		this.infoCache = infoCache;
 	}
 
+	@Override
+	public Object _findBody() {
+		return this.infoCache.get(this);
+	}
+
+	@Override
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		super._toStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
+	}
+
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.internal.core.SourceField#getKey()
 	 */
@@ -57,16 +67,6 @@ public class AssistSourceField extends ResolvedSourceField {
 			}
 		}
 		return this.uniqueKey;
-	}
-
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
 	}
 
 	public boolean isResolved() {

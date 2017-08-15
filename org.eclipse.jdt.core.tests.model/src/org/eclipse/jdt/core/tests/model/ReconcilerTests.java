@@ -2432,7 +2432,7 @@ public void testMethodWithError07() throws CoreException {
 		this.workingCopy = getCompilationUnit("Reconciler/src/p1/Y.java").getWorkingCopy(this.wcOwner, null);
 
 		// Close working copy
-		((CompilationUnit)this.workingCopy).hRemove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
+		((CompilationUnit)this.workingCopy)._remove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
 
 		// Reopen should detect syntax error
 		this.problemRequestor.initialize(contents.toCharArray());
@@ -2480,7 +2480,7 @@ public void testMethodWithError08() throws CoreException {
 		this.workingCopy = getCompilationUnit("Reconciler/src/p2/X01.java").getWorkingCopy(this.wcOwner, null);
 
 		// Close working copy
-		((CompilationUnit)this.workingCopy).hRemove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
+		((CompilationUnit)this.workingCopy)._remove(EMPTY_CONTEXT); // use a back door as working copies cannot be closed
 
 		// Reopen should detect syntax error
 		this.problemRequestor.initialize(contents.toCharArray());

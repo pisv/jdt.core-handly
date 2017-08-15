@@ -34,6 +34,22 @@ public class ExternalJavaProject extends JavaProject {
 		}
 	}
 
+	@Override
+	public boolean _canEqual(Object obj) {
+		return obj instanceof ExternalJavaProject;
+	}
+
+	@Override
+	public boolean _exists() {
+		// external project never exists
+		return false;
+	}
+
+	@Override
+	public void _validateExistence(IContext context) {
+		// allow opening of external project
+	}
+
 	public boolean equals(Object o) {
 		return this == o;
 	}
@@ -43,22 +59,6 @@ public class ExternalJavaProject extends JavaProject {
 				|| JavaCore.COMPILER_PB_DISCOURAGED_REFERENCE.equals(optionName))
 			return JavaCore.IGNORE;
 		return super.getOption(optionName, inheritJavaCoreOptions);
-	}
-
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof ExternalJavaProject;
-	}
-
-	@Override
-	public boolean hExists() {
-		// external project never exists
-		return false;
-	}
-
-	@Override
-	public void hValidateExistence(IContext context) {
-		// allow opening of external project
 	}
 
 	public boolean isOnClasspath(IJavaElement element) {

@@ -103,7 +103,7 @@ public UndoEdit applyTextEdit(TextEdit edit, IProgressMonitor monitor) throws Ja
  * @see ICompilationUnit#becomeWorkingCopy(IProblemRequestor, IProgressMonitor)
  */
 public void becomeWorkingCopy(IProblemRequestor problemRequestor, IProgressMonitor monitor) throws JavaModelException {
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = hModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = _getModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
 	if (perWorkingCopyInfo == null) {
 		// close cu and its children
 		close();
@@ -140,14 +140,14 @@ public CompilationUnit cloneCachingContents() {
  * @see Openable#canBeRemovedFromCache
  */
 public boolean canBeRemovedFromCache() {
-	if (hIsWorkingCopy()) return false; // working copies should remain in the cache until they are destroyed
+	if (_isWorkingCopy()) return false; // working copies should remain in the cache until they are destroyed
 	return super.canBeRemovedFromCache();
 }
 /*
  * @see Openable#canBufferBeRemovedFromCache
  */
 public boolean canBufferBeRemovedFromCache(IBuffer buffer) {
-	if (hIsWorkingCopy()) return false; // working copy buffers should remain in the cache until working copy is destroyed
+	if (_isWorkingCopy()) return false; // working copy buffers should remain in the cache until working copy is destroyed
 	return super.canBufferBeRemovedFromCache(buffer);
 }
 /**
@@ -545,7 +545,7 @@ public char[] getContents() {
 		try {
 			return Util.getResourceContentsAsCharArray(file, encoding);
 		} catch (JavaModelException e) {
-			if (hModelManager().abortOnMissingSource.get() == Boolean.TRUE) {
+			if (_getModelManager().abortOnMissingSource.get() == Boolean.TRUE) {
 				IOException ioException =
 					e.getJavaModelStatus().getCode() == IJavaModelStatusConstants.IO_EXCEPTION ?
 						(IOException)e.getException() :
@@ -665,7 +665,7 @@ public IImportContainer getImportContainer() {
  */
 public IImportDeclaration[] getImports() throws JavaModelException {
 	IImportContainer container= getImportContainer();
-	JavaModelManager manager = hModelManager();
+	JavaModelManager manager = _getModelManager();
 	Object info = manager.getInfo(container);
 	if (info == null) {
 		if (manager.getInfo(this) != null)
@@ -768,7 +768,7 @@ public IPath getPath() {
  * Note: the use count of the per working copy info is NOT incremented.
  */
 public JavaModelManager.PerWorkingCopyInfo getPerWorkingCopyInfo() {
-	return hModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, false/*don't record usage*/, null/*no problem requestor needed*/);
+	return _getModelManager().getPerWorkingCopyInfo(this, false/*don't create*/, false/*don't record usage*/, null/*no problem requestor needed*/);
 }
 /*
  * @see ICompilationUnit#getPrimary()
@@ -872,7 +872,7 @@ public ICompilationUnit getWorkingCopy(WorkingCopyOwner workingCopyOwner, IProbl
 
 	CompilationUnit workingCopy = new CompilationUnit((PackageFragment)getParent(), getElementName(), workingCopyOwner);
 	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo =
-		hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
+		_getModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
 	if (perWorkingCopyInfo != null) {
 		return perWorkingCopyInfo.getWorkingCopy(); // return existing handle instead of the one created above
 	}
@@ -894,21 +894,21 @@ public boolean hasResourceChanged() {
 
 	// if resource got deleted, then #getModificationStamp() will answer IResource.NULL_STAMP, which is always different from the cached
 	// timestamp
-	Object info = hModelManager().getInfo(this);
+	Object info = _getModelManager().getInfo(this);
 	if (info == null) return false;
 	IResource resource = getResource();
 	if (resource == null) return false;
 	return ((CompilationUnitElementInfo)info).timestamp != resource.getModificationStamp();
 }
 @Override
-public org.eclipse.handly.buffer.IBuffer hBuffer(IContext context, IProgressMonitor monitor) throws CoreException {
+public org.eclipse.handly.buffer.IBuffer _getBuffer(IContext context, IProgressMonitor monitor) throws CoreException {
 	IBuffer buffer = getBuffer();
 	if (buffer == null)
 		throw new AssertionError();
 	return new BufferAdapter(buffer);
 }
 @Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+public void _buildStructure(IContext context, IProgressMonitor pm) throws CoreException {
 	Map<IElement, Object> newElements = context.get(NEW_ELEMENTS);
 	CompilationUnitElementInfo unitInfo = new CompilationUnitElementInfo();
 
@@ -1016,37 +1016,37 @@ public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreEx
 	}
 }
 @Override
-public void hClose(IContext context) {
-	if (hIsWorkingCopy())
+public void _close(IContext context) {
+	if (_isWorkingCopy())
 		return;
-	super.hClose(context);
+	super._close(context);
 }
 @Override
-public void hGenerateAncestorBodies(IContext context, IProgressMonitor monitor) throws CoreException {
-	if (hIsWorkingCopy())
+public void _generateAncestorBodies(IContext context, IProgressMonitor monitor) throws CoreException {
+	if (_isWorkingCopy())
 		return; // don't open ancestors for a working copy
-	super.hGenerateAncestorBodies(context, monitor);
+	super._generateAncestorBodies(context, monitor);
 }
 @Override
-public boolean hIsWorkingCopy() {
+public boolean _isWorkingCopy() {
 	return getPerWorkingCopyInfo() != null;
 }
 @Override
-public boolean hNeedsReconciling() {
+public boolean _needsReconciling() {
 	return !isConsistent();
 }
 @Override
-public void hReconcile(IContext context, IProgressMonitor monitor) throws CoreException {
+public void _reconcile(IContext context, IProgressMonitor monitor) throws CoreException {
 	reconcile(context.getOrDefault(Elements.FORCE_RECONCILING), monitor);
 }
 
 @Override
-public ISourceElement hSourceElementAt(int position, ISnapshot base) throws CoreException {
+public ISourceElement _getSourceElementAt(int position, ISnapshot base) throws CoreException {
 	return (ISourceElement) getElementAt(position);
 }
 @Override
-public ISourceElementInfo hSourceElementInfo() throws CoreException {
-	CompilationUnitElementInfo info = (CompilationUnitElementInfo) hBody();
+public ISourceElementInfo _getSourceElementInfo() throws CoreException {
+	CompilationUnitElementInfo info = (CompilationUnitElementInfo) _getBody();
 	TextRange fullRange = new TextRange(0, info.getSourceLength());
 	IJavaElement[] children = info.getChildren();
 	ISourceConstruct[] sourceConstructs = new ISourceConstruct[children.length];
@@ -1076,24 +1076,24 @@ public ISourceElementInfo hSourceElementInfo() throws CoreException {
 	};
 }
 @Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
 	if (!isPrimary()) {
 		builder.append("[Working copy] "); //$NON-NLS-1$
-		hToStringName(builder, context);
+		_toStringName(builder, context);
 	} else {
 		if (isWorkingCopy()) {
 			builder.append("[Working copy] "); //$NON-NLS-1$
-			hToStringName(builder, context);
+			_toStringName(builder, context);
 			if (body == null) {
 				builder.append(" (not open)"); //$NON-NLS-1$
 			}
 		} else {
-			super.hToStringBody(builder, body, context);
+			super._toStringBody(builder, body, context);
 		}
 	}
 }
 @Override
-public void hValidateExistence(IContext context) throws CoreException {
+public void _validateExistence(IContext context) throws CoreException {
 	// check if this compilation unit can be opened
 	if (!isWorkingCopy()) { // no check is done on root kind or exclusion pattern for working copies
 		IStatus status = validateCompilationUnit(resource());
@@ -1102,8 +1102,8 @@ public void hValidateExistence(IContext context) throws CoreException {
 	}
 
 	// prevents reopening of non-primary working copies (they are closed when they are discarded and should not be reopened)
-	if (!isPrimary() && !hIsWorkingCopy()) {
-		throw hDoesNotExistException();
+	if (!isPrimary() && !_isWorkingCopy()) {
+		throw _newDoesNotExistException();
 	}
 }
 public boolean ignoreOptionalProblems() {
@@ -1122,7 +1122,7 @@ public boolean isBasedOn(IResource resource) {
  * @see IOpenable#isConsistent()
  */
 public boolean isConsistent() {
-	return !hModelManager().getElementsOutOfSynchWithBuffers().contains(this);
+	return !_getModelManager().getElementsOutOfSynchWithBuffers().contains(this);
 }
 public boolean isPrimary() {
 	return this.owner == DefaultWorkingCopyOwner.PRIMARY;
@@ -1159,7 +1159,7 @@ protected IStatus validateCompilationUnit(IResource resource) {
 public boolean isWorkingCopy() {
 	// For backward compatibility, non primary working copies are always returning true; in removal
 	// delta, clients can still check that element was a working copy before being discarded.
-	return !isPrimary() || hIsWorkingCopy();
+	return !isPrimary() || _isWorkingCopy();
 }
 /**
  * @see IOpenable#makeConsistent(IProgressMonitor)
@@ -1171,7 +1171,7 @@ public org.eclipse.jdt.core.dom.CompilationUnit makeConsistent(int astLevel, boo
 	if (isConsistent()) return null;
 
 	try {
-		hModelManager().abortOnMissingSource.set(Boolean.TRUE);
+		_getModelManager().abortOnMissingSource.set(Boolean.TRUE);
 		// create a new info and make it the current info
 		// (this will remove the info and its children just before storing the new infos)
 		if (astLevel != NO_AST || problems != null) {
@@ -1180,18 +1180,18 @@ public org.eclipse.jdt.core.dom.CompilationUnit makeConsistent(int astLevel, boo
 			info.resolveBindings = resolveBindings;
 			info.reconcileFlags = reconcileFlags;
 			info.problems = problems;
-			hOpen(with(of(AST_HOLDER, info), of(FORCE_OPEN, true)), monitor);
+			_open(with(of(AST_HOLDER, info), of(FORCE_OPEN, true)), monitor);
 			org.eclipse.jdt.core.dom.CompilationUnit result = info.ast;
 			info.ast = null;
 			return result;
 		} else {
-			hOpen(of(FORCE_OPEN, true), monitor);
+			_open(of(FORCE_OPEN, true), monitor);
 			return null;
 		}
 	} catch (CoreException e) {
 		throw Util.toJavaModelException(e);
 	} finally {
-		hModelManager().abortOnMissingSource.set(null);
+		_getModelManager().abortOnMissingSource.set(null);
 	}
 }
 /**
@@ -1337,7 +1337,7 @@ public org.eclipse.jdt.core.dom.CompilationUnit reconcile(
 		stats.startRun(new String(getFileName()));
 	}
 	ReconcileWorkingCopyOperation op = new ReconcileWorkingCopyOperation(this, astLevel, reconcileFlags, workingCopyOwner);
-	JavaModelManager manager = hModelManager();
+	JavaModelManager manager = _getModelManager();
 	try {
 		manager.cacheZipFiles(this); // cache zip files for performance (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=134172)
 		op.runOperation(monitor);

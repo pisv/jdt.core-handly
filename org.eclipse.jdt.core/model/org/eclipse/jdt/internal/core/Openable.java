@@ -39,6 +39,80 @@ protected static final Property<Boolean> IS_STRUCTURE_KNOWN = Property.get(
 protected Openable(JavaElement parent) {
 	super(parent);
 }
+@Override
+public void _close(IContext context) {
+	CloseHint hint = context.get(CLOSE_HINT);
+	if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
+		return;
+	super._close(context);
+}
+@Override
+public boolean _exists() {
+	if (_findBody() != null)
+		return true;
+	switch (getElementType()) {
+		case IJavaElement.PACKAGE_FRAGMENT:
+			PackageFragmentRoot root = getPackageFragmentRoot();
+			if (root.isArchive()) {
+				// pkg in a jar -> need to open root to know if this pkg exists
+				JarPackageFragmentRootInfo rootInfo;
+				try {
+					rootInfo = (JarPackageFragmentRootInfo) root.getElementInfo();
+				} catch (JavaModelException e) {
+					return false;
+				}
+				return rootInfo.rawPackageInfo.containsKey(((PackageFragment) this).names);
+			}
+			break;
+		case IJavaElement.CLASS_FILE:
+			if (getPackageFragmentRoot().isArchive()) {
+				// class file in a jar -> need to open this class file to know if it exists
+				return super._exists();
+			}
+			break;
+	}
+	return super._exists();
+}
+@Override
+public void _generateBodies(IContext context, IProgressMonitor monitor) throws CoreException {
+	if (JavaModelCache.VERBOSE){
+		String element;
+		switch (getElementType()) {
+			case JAVA_PROJECT:
+				element = "project"; //$NON-NLS-1$
+				break;
+			case PACKAGE_FRAGMENT_ROOT:
+				element = "root"; //$NON-NLS-1$
+				break;
+			case PACKAGE_FRAGMENT:
+				element = "package"; //$NON-NLS-1$
+				break;
+			case CLASS_FILE:
+				element = "class file"; //$NON-NLS-1$
+				break;
+			case COMPILATION_UNIT:
+				element = "compilation unit"; //$NON-NLS-1$
+				break;
+			default:
+				element = "element"; //$NON-NLS-1$
+		}
+		System.out.println(Thread.currentThread() +" OPENING " + element + " " + this.toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+	}
+
+	super._generateBodies(context, monitor);
+
+	// remove out of sync buffer for this element
+	_getModelManager().getElementsOutOfSynchWithBuffers().remove(this);
+
+	if (JavaModelCache.VERBOSE) {
+		System.out.println(_getModelManager().cacheToString("-> ")); //$NON-NLS-1$
+	}
+}
+@Override
+public void _removing(Object body) {
+	closeBuffer();
+	super._removing(body);
+}
 /**
  * The buffer associated with this element has changed. Registers
  * this element as being out of synch with its buffer's contents.
@@ -49,10 +123,10 @@ protected Openable(JavaElement parent) {
  */
 public void bufferChanged(BufferChangedEvent event) {
 	if (event.getBuffer().isClosed()) {
-		hModelManager().getElementsOutOfSynchWithBuffers().remove(this);
+		_getModelManager().getElementsOutOfSynchWithBuffers().remove(this);
 		getBufferManager().removeBuffer(event.getBuffer());
 	} else {
-		hModelManager().getElementsOutOfSynchWithBuffers().add(this);
+		_getModelManager().getElementsOutOfSynchWithBuffers().add(this);
 	}
 }
 /*
@@ -281,80 +355,6 @@ public boolean hasUnsavedChanges() throws JavaModelException{
 
 	return false;
 }
-@Override
-public void hClose(IContext context) {
-	CloseHint hint = context.get(CLOSE_HINT);
-	if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
-		return;
-	super.hClose(context);
-}
-@Override
-public boolean hExists() {
-	if (hFindBody() != null)
-		return true;
-	switch (getElementType()) {
-		case IJavaElement.PACKAGE_FRAGMENT:
-			PackageFragmentRoot root = getPackageFragmentRoot();
-			if (root.isArchive()) {
-				// pkg in a jar -> need to open root to know if this pkg exists
-				JarPackageFragmentRootInfo rootInfo;
-				try {
-					rootInfo = (JarPackageFragmentRootInfo) root.getElementInfo();
-				} catch (JavaModelException e) {
-					return false;
-				}
-				return rootInfo.rawPackageInfo.containsKey(((PackageFragment) this).names);
-			}
-			break;
-		case IJavaElement.CLASS_FILE:
-			if (getPackageFragmentRoot().isArchive()) {
-				// class file in a jar -> need to open this class file to know if it exists
-				return super.hExists();
-			}
-			break;
-	}
-	return super.hExists();
-}
-@Override
-public void hGenerateBodies(IContext context, IProgressMonitor monitor) throws CoreException {
-	if (JavaModelCache.VERBOSE){
-		String element;
-		switch (getElementType()) {
-			case JAVA_PROJECT:
-				element = "project"; //$NON-NLS-1$
-				break;
-			case PACKAGE_FRAGMENT_ROOT:
-				element = "root"; //$NON-NLS-1$
-				break;
-			case PACKAGE_FRAGMENT:
-				element = "package"; //$NON-NLS-1$
-				break;
-			case CLASS_FILE:
-				element = "class file"; //$NON-NLS-1$
-				break;
-			case COMPILATION_UNIT:
-				element = "compilation unit"; //$NON-NLS-1$
-				break;
-			default:
-				element = "element"; //$NON-NLS-1$
-		}
-		System.out.println(Thread.currentThread() +" OPENING " + element + " " + this.toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
-	}
-
-	super.hGenerateBodies(context, monitor);
-
-	// remove out of sync buffer for this element
-	hModelManager().getElementsOutOfSynchWithBuffers().remove(this);
-
-	if (JavaModelCache.VERBOSE) {
-		System.out.println(hModelManager().cacheToString("-> ")); //$NON-NLS-1$
-	}
-}
-@Override
-public void hRemoving(Object body) {
-	closeBuffer();
-	super.hRemoving(body);
-}
 /**
  * Subclasses must override as required.
  *
@@ -368,7 +368,7 @@ public boolean isConsistent() {
  * @see IOpenable
  */
 public boolean isOpen() {
-	return hFindBody() != null;
+	return _findBody() != null;
 }
 /**
  * Returns true if this represents a source element.

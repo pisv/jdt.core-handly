@@ -55,6 +55,65 @@ public class BinaryType extends BinaryMember implements IType, SuffixConstants {
 protected BinaryType(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean _canEqual(Object obj) {
+	return obj instanceof BinaryType;
+}
+@Override
+public Object _getBody(IContext context, IProgressMonitor monitor) throws CoreException {
+	Object body = _findBody();
+	if (body != null && body != JavaModelCache.NON_EXISTING_JAR_TYPE_INFO) return body;
+	return _open(context, monitor);
+}
+@Override
+public IElement[] _getChildren() throws CoreException {
+	ClassFileInfo cfi = getClassFileInfo();
+	return cfi.binaryChildren;
+}
+/*
+ * Remove my cached children from the Java Model
+ */
+@Override
+public void _removing(Object body) {
+	try {
+		ClassFileInfo cfi = getClassFileInfo();
+		cfi.removeBinaryChildren();
+	} catch (JavaModelException e) {
+		// fall through
+	}
+	super._removing(body);
+}
+@Override
+public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		_toStringName(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		_toStringName(builder, context);
+	} else {
+		try {
+			if (isAnnotation()) {
+				builder.append("@interface "); //$NON-NLS-1$
+			} else if (isEnum()) {
+				builder.append("enum "); //$NON-NLS-1$
+			} else if (isInterface()) {
+				builder.append("interface "); //$NON-NLS-1$
+			} else {
+				builder.append("class "); //$NON-NLS-1$
+			}
+			_toStringName(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
+}
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	if (getElementName().length() > 0)
+		super._toStringName(builder, context);
+	else
+		builder.append("<anonymous>"); //$NON-NLS-1$
+}
 /**
  * @see IType#codeComplete(char[], int, int, char[][], char[][], int[], boolean, ICompletionRequestor)
  * @deprecated
@@ -670,66 +729,6 @@ public IType[] getTypes() throws JavaModelException {
 		return array;
 	}
 }
-@Override
-public Object hBody(IContext context, IProgressMonitor monitor) throws CoreException {
-	Object body = hFindBody();
-	if (body != null && body != JavaModelCache.NON_EXISTING_JAR_TYPE_INFO) return body;
-	return hOpen(context, monitor);
-}
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof BinaryType;
-}
-@Override
-public IElement[] hChildren() throws CoreException {
-	ClassFileInfo cfi = getClassFileInfo();
-	return cfi.binaryChildren;
-}
-/*
- * Remove my cached children from the Java Model
- */
-@Override
-public void hRemoving(Object body) {
-	try {
-		ClassFileInfo cfi = getClassFileInfo();
-		cfi.removeBinaryChildren();
-	} catch (JavaModelException e) {
-		// fall through
-	}
-	super.hRemoving(body);
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		try {
-			if (isAnnotation()) {
-				builder.append("@interface "); //$NON-NLS-1$
-			} else if (isEnum()) {
-				builder.append("enum "); //$NON-NLS-1$
-			} else if (isInterface()) {
-				builder.append("interface "); //$NON-NLS-1$
-			} else {
-				builder.append("class "); //$NON-NLS-1$
-			}
-			hToStringName(builder, context);
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	if (getElementName().length() > 0)
-		super.hToStringName(builder, context);
-	else
-		builder.append("<anonymous>"); //$NON-NLS-1$
-}
-
 /*
  * @see IType#isAnonymous()
  */
@@ -858,7 +857,7 @@ public ITypeHierarchy newSupertypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), false);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -876,7 +875,7 @@ public ITypeHierarchy newTypeHierarchy(IJavaProject project, WorkingCopyOwner ow
 	if (project == null) {
 		throw new IllegalArgumentException(Messages.hierarchy_nullProject);
 	}
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	ICompilationUnit[] projectWCs = null;
 	if (workingCopies != null) {
 		int length = workingCopies.length;
@@ -952,7 +951,7 @@ public ITypeHierarchy newTypeHierarchy(
 	IProgressMonitor monitor)
 	throws JavaModelException {
 
-	ICompilationUnit[] workingCopies = hModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
+	ICompilationUnit[] workingCopies = _getModelManager().getWorkingCopies(owner, true/*add primary working copies*/);
 	CreateTypeHierarchyOperation op= new CreateTypeHierarchyOperation(this, workingCopies, SearchEngine.createWorkspaceScope(), true);
 	op.runOperation(monitor);
 	return op.getResult();
@@ -1003,7 +1002,7 @@ public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelExcep
 	return javadocContents.getTypeDoc();
 }
 public JavadocContents getJavadocContents(IProgressMonitor monitor) throws JavaModelException {
-	PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+	PerProjectInfo projectInfo = _getModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
 	JavadocContents cachedJavadoc = null;
 	synchronized (projectInfo.javadocCache) {
 		cachedJavadoc = (JavadocContents) projectInfo.javadocCache.get(this);

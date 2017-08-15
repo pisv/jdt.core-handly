@@ -159,7 +159,7 @@ private void expandAll(IJavaElement element, int tab, StringBuilder builder) thr
 	}
 	for (int i = tab; i > 0; i--)
 		builder.append("  "); //$NON-NLS-1$
-	((JavaElement)element).hToStringBody(builder, ((JavaElement)element).hPeekAtBody(),
+	((JavaElement)element)._toStringBody(builder, ((JavaElement)element)._peekAtBody(),
 			with(of(INDENT_LEVEL, tab), of(JavaElement.SHOW_RESOLVED_INFO, true)));
 	if (children != null) {
 		for (int i = 0, length = children.length; i < length; i++) {

@@ -24,6 +24,22 @@ public class ImportContainer extends SourceRefElement implements IImportContaine
 protected ImportContainer(CompilationUnit parent) {
 	super(parent);
 }
+@Override
+public String _toString(IContext context) {
+	ToStringOptions.FormatStyle style = context.getOrDefault(ToStringOptions.FORMAT_STYLE);
+	if (style == ToStringOptions.FormatStyle.FULL || style == ToStringOptions.FormatStyle.LONG)
+	{
+		StringBuilder builder = new StringBuilder();
+		_toStringChildren(builder, _peekAtBody(), with(of(ToStringOptions.FORMAT_STYLE,
+			ToStringOptions.FormatStyle.SHORT), context));
+		return builder.toString();
+	}
+	return super._toString(context);
+}
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	builder.append("<import container>"); //$NON-NLS-1$
+}
 /**
  * @see IJavaElement
  */
@@ -94,23 +110,5 @@ public String readableName() {
 }
 public ISourceRange getNameRange() {
 	return null;
-}
-@Override
-public String hToString(IContext context)
-{
-	ToStringOptions.FormatStyle style = context.getOrDefault(ToStringOptions.FORMAT_STYLE);
-	if (style == ToStringOptions.FormatStyle.FULL || style == ToStringOptions.FormatStyle.LONG)
-	{
-		StringBuilder builder = new StringBuilder();
-		hToStringChildren(builder, hPeekAtBody(), with(of(ToStringOptions.FORMAT_STYLE,
-			ToStringOptions.FormatStyle.SHORT), context));
-		return builder.toString();
-	}
-	return super.hToString(context);
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context)
-{
-	builder.append("<import container>"); //$NON-NLS-1$
 }
 }

@@ -94,6 +94,18 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 		}
 	}
 
+	@Override
+	public boolean _exists() {
+		return this.parent.exists(); // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=46192
+	}
+	@Override
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		if (body != NO_BODY) {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+		}
+		_toStringName(builder, context);
+	}
 	public boolean equals(Object o) {
 		if (!(o instanceof LocalVariable)) return false;
 		LocalVariable other = (LocalVariable)o;
@@ -139,6 +151,10 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 			public LocalVarAnnotation(JavaElement localVar, String elementName) {
 				super(localVar, elementName);
 			}
+			@Override
+			public boolean _exists() {
+				return this.parent.exists();
+			}
 			public IMemberValuePair[] getMemberValuePairs() throws JavaModelException {
 				return this.memberValuePairs;
 			}
@@ -147,10 +163,6 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 			}
 			public ISourceRange getSourceRange() throws JavaModelException {
 				return new SourceRange(sourceStart, sourceEnd - sourceStart + 1);
-			}
-			@Override
-			public boolean hExists() {
-				return this.parent.exists();
 			}
 		}
 		String annotationName = new String(CharOperation.concatWith(annotation.type.getTypeName(), '.'));
@@ -429,20 +441,6 @@ public class LocalVariable extends SourceRefElement implements ILocalVariable {
 
 	public int hashCode() {
 		return Util.combineHashCodes(this.parent.hashCode(), this.nameStart);
-	}
-
-	@Override
-	public boolean hExists() {
-		return this.parent.exists(); // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=46192
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		if (body != NO_BODY) {
-			builder.append(Signature.toString(getTypeSignature()));
-			builder.append(" "); //$NON-NLS-1$
-		}
-		hToStringName(builder, context);
 	}
 
 	/**

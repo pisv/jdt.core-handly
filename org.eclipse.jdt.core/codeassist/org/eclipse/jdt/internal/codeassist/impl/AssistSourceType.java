@@ -71,13 +71,13 @@ public class AssistSourceType extends ResolvedSourceType {
 	}
 
 	@Override
-	public Object hFindBody() {
+	public Object _findBody() {
 		return this.infoCache.get(this);
 	}
 
 	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
+	public void _toStringBody(StringBuilder builder, Object body, IContext context) {
+		super._toStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
 	}
 
 	public boolean isResolved() {

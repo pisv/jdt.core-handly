@@ -125,6 +125,25 @@ private Object[] computeNonJavaResources(ArrayList entryNames) {
 	}
 	return topJarEntries.toArray(new Object[topJarEntries.size()]);
 }
+@Override
+public void _buildStructure(IContext context, IProgressMonitor pm) throws CoreException {
+	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
+	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root._getBody();
+	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
+	if (entries == null)
+		throw newNotPresentException();
+	JarPackageFragmentInfo fragInfo = new JarPackageFragmentInfo();
+
+	// compute children
+	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
+
+	// compute non-Java resources
+	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
+
+	fragInfo.setIsStructureKnown(true);
+
+	context.get(NEW_ELEMENTS).put(this, fragInfo);
+}
 /**
  * Returns true if this fragment contains at least one java resource.
  * Returns false otherwise.
@@ -172,25 +191,6 @@ public Object[] getNonJavaResources() throws JavaModelException {
 	} else {
 		return storedNonJavaResources();
 	}
-}
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	JarPackageFragmentRoot root = (JarPackageFragmentRoot) getParent();
-	JarPackageFragmentRootInfo parentInfo = (JarPackageFragmentRootInfo) root.hBody();
-	ArrayList[] entries = (ArrayList[]) parentInfo.rawPackageInfo.get(this.names);
-	if (entries == null)
-		throw newNotPresentException();
-	JarPackageFragmentInfo fragInfo = new JarPackageFragmentInfo();
-
-	// compute children
-	fragInfo.setChildren(computeChildren(entries[0/*class files*/]));
-
-	// compute non-Java resources
-	fragInfo.setNonJavaResources(computeNonJavaResources(entries[1/*non Java resources*/]));
-
-	fragInfo.setIsStructureKnown(true);
-
-	context.get(NEW_ELEMENTS).put(this, fragInfo);
 }
 protected boolean internalIsValidPackageName() {
 	return true;

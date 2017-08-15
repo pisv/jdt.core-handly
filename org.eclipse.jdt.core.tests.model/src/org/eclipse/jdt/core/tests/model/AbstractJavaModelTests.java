@@ -242,7 +242,7 @@ public abstract class AbstractJavaModelTests extends SuiteOfTestCases {
 							return d.toString();
 						}
 					};
-					((JavaElementDelta) delta).hToStringChildren(builder, with(of(JavaElementDelta.COMPARER, comparer),
+					((JavaElementDelta) delta)._toStringChildren(builder, with(of(JavaElementDelta.COMPARER, comparer),
 							of(INDENT_POLICY, JavaElementDelta.DELTA_INDENT_POLICY)));
 					for (int j=0; j<resourceDeltasLength; j++) {
 						if (j == 0 && builder.length() != 0) {

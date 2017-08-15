@@ -32,6 +32,11 @@ public class AssistCompilationUnit extends CompilationUnit {
 		this.infoCache = infoCache;
 	}
 
+	@Override
+	public Object _findBody() {
+		return this.infoCache.get(this);
+	}
+
 	public IImportContainer getImportContainer() {
 		return new AssistImportContainer(this, this.infoCache);
 	}
@@ -47,10 +52,5 @@ public class AssistCompilationUnit extends CompilationUnit {
 	public boolean hasChildren() throws JavaModelException {
 		JavaElementInfo info = (JavaElementInfo)this.infoCache.get(this);
 		return info.getChildren().length > 0;
-	}
-
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
 	}
 }

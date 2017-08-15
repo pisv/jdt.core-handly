@@ -41,6 +41,12 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 		this.memberValuePairName = memberValuePairName;
 	}
 
+	@Override
+	public void _toStringName(StringBuilder builder, IContext context) {
+		builder.append('@');
+		builder.append(getElementName());
+	}
+
 	public boolean equals(Object o) {
 		if (!(o instanceof Annotation)) {
 			return false;
@@ -132,11 +138,5 @@ public class Annotation extends SourceRefElement implements IAnnotation {
 		result = prime * result + ((this.memberValuePairName == null) ? 0 : this.memberValuePairName.hashCode());
 		result = prime * result + this.name.hashCode();
 		return result;
-	}
-
-	@Override
-	public void hToStringName(StringBuilder builder, IContext context) {
-		builder.append('@');
-		builder.append(getElementName());
 	}
 }

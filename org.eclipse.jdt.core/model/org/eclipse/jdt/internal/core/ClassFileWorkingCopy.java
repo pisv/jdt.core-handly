@@ -39,6 +39,11 @@ public ClassFileWorkingCopy(ClassFile classFile, WorkingCopyOwner owner) {
 	this.classFile = classFile;
 }
 
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	builder.append(this.classFile.getElementName());
+}
+
 public void commitWorkingCopy(boolean force, IProgressMonitor monitor) throws JavaModelException {
 	throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.INVALID_ELEMENT_TYPES, this));
 }
@@ -69,11 +74,6 @@ public IPath getPath() {
 public IJavaElement getPrimaryElement(boolean checkOwner) {
 	if (checkOwner && isPrimary()) return this;
 	return new ClassFileWorkingCopy(this.classFile, DefaultWorkingCopyOwner.PRIMARY);
-}
-
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append(this.classFile.getElementName());
 }
 
 public IResource resource(PackageFragmentRoot root) {

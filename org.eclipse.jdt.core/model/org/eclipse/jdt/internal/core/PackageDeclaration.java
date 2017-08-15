@@ -25,6 +25,11 @@ protected PackageDeclaration(CompilationUnit parent, String name) {
 	super(parent);
 	this.name = name;
 }
+@Override
+public void _toStringName(StringBuilder builder, IContext context) {
+	builder.append("package "); //$NON-NLS-1$
+	super._toStringName(builder, context);
+}
 public String getElementName() {
 	return this.name;
 }
@@ -54,10 +59,5 @@ public IJavaElement getPrimaryElement(boolean checkOwner) {
 	CompilationUnit cu = (CompilationUnit)getAncestor(COMPILATION_UNIT);
 	if (checkOwner && cu.isPrimary()) return this;
 	return cu.getPackageDeclaration(this.name);
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	builder.append("package "); //$NON-NLS-1$
-	super.hToStringName(builder, context);
 }
 }

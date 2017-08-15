@@ -167,12 +167,11 @@ public class ReconcileWorkingCopyOperation extends JavaModelOperation {
 			// create the delta builder (this remembers the current content of the cu)
 			JavaElementDeltaBuilder deltaBuilder = new JavaElementDeltaBuilder(workingCopy);
 			this.ast = workingCopy.makeConsistent(this.astLevel, this.resolveBindings, this.reconcileFlags, this.problems, this.progressMonitor);
-			deltaBuilder.buildDelta();
-			if (!deltaBuilder.isEmptyDelta()) {
-				this.delta = deltaBuilder.getDelta();
-				if (this.ast != null)
-					this.delta.changedAST(this.ast);
-				}
+			deltaBuilder.buildDeltas();
+			this.delta = deltaBuilder.delta;
+			if (this.ast != null && this.delta != null) {
+				this.delta.changedAST(this.ast);
+			}
 			return this.ast;
 		}
 		if (this.ast != null)
