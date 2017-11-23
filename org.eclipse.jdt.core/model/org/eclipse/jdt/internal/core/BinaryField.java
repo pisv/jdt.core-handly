@@ -33,10 +33,19 @@ import org.eclipse.jdt.internal.compiler.lookup.Binding;
 protected BinaryField(JavaElement parent, String name) {
 	super(parent, name);
 }
+@Override
+public boolean canEqual_(Object obj) {
+	return obj instanceof BinaryField;
+}
 public IAnnotation[] getAnnotations() throws JavaModelException {
 	IBinaryField info = (IBinaryField) getElementInfo();
 	IBinaryAnnotation[] binaryAnnotations = info.getAnnotations();
 	return getAnnotations(binaryAnnotations, info.getTagBits());
+}
+public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
+	JavadocContents javadocContents = ((BinaryType) this.getDeclaringType()).getJavadocContents(monitor);
+	if (javadocContents == null) return null;
+	return javadocContents.getFieldDoc(this);
 }
 /*
  * @see IField
@@ -46,17 +55,17 @@ public Object getConstant() throws JavaModelException {
 	return convertConstant(info.getConstant());
 }
 /*
+ * @see IJavaElement
+ */
+public int getElementType() {
+	return FIELD;
+}
+/*
  * @see IMember
  */
 public int getFlags() throws JavaModelException {
 	IBinaryField info = (IBinaryField) getElementInfo();
 	return info.getModifiers();
-}
-/*
- * @see IJavaElement
- */
-public int getElementType() {
-	return FIELD;
 }
 /*
  * @see JavaElement#getHandleMemento()
@@ -78,27 +87,6 @@ public String getTypeSignature() throws JavaModelException {
 	}
 	return new String(ClassFile.translatedName(info.getTypeName()));
 }
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof BinaryField;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-	if (body == null) {
-		hToStringName(builder, context);
-		builder.append(" (not open)"); //$NON-NLS-1$
-	} else if (body == NO_BODY) {
-		hToStringName(builder, context);
-	} else {
-		try {
-			builder.append(Signature.toString(getTypeSignature()));
-			builder.append(" "); //$NON-NLS-1$
-			hToStringName(builder, context);
-		} catch (JavaModelException e) {
-			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
-		}
-	}
-}
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.IField#isEnumConstant()
  */public boolean isEnumConstant() throws JavaModelException {
@@ -115,9 +103,21 @@ public JavaElement resolved(Binding binding) {
 	resolvedHandle.occurrenceCount = this.occurrenceCount;
 	return resolvedHandle;
 }
-public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
-	JavadocContents javadocContents = ((BinaryType) this.getDeclaringType()).getJavadocContents(monitor);
-	if (javadocContents == null) return null;
-	return javadocContents.getFieldDoc(this);
+@Override
+public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+	if (body == null) {
+		toStringName_(builder, context);
+		builder.append(" (not open)"); //$NON-NLS-1$
+	} else if (body == NO_BODY) {
+		toStringName_(builder, context);
+	} else {
+		try {
+			builder.append(Signature.toString(getTypeSignature()));
+			builder.append(" "); //$NON-NLS-1$
+			toStringName_(builder, context);
+		} catch (JavaModelException e) {
+			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
+		}
+	}
 }
 }

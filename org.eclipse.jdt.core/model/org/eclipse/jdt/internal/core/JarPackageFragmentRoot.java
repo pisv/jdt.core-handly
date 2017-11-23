@@ -67,6 +67,10 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 		this.jarPath = resource.getFullPath();
 	}
 
+	@Override
+	public boolean canEqual_(Object obj) {
+		return obj instanceof JarPackageFragmentRoot;
+	}
 	/**
 	 * Compute the package fragment children of this package fragment root.
 	 * These are all of the directory zip entries, and any directories implied
@@ -74,7 +78,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	 */
 	protected void computeChildren(PackageFragmentRootInfo info, IResource underlyingResource) throws JavaModelException {
 		HashtableOfArrayToObject rawPackageInfo = new HashtableOfArrayToObject();
-		IJavaElement[] children;
+		JavaElement[] children;
 		ZipFile jar = null;
 		try {
 			Object file = JavaModel.getTarget(getPath(), true);
@@ -92,7 +96,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 
 			// loop through all of referenced packages, creating package fragments if necessary
 			// and cache the entry names in the rawPackageInfo table
-			children = new IJavaElement[rawPackageInfo.size()];
+			children = new JavaElement[rawPackageInfo.size()];
 			int index = 0;
 			for (int i = 0, length = rawPackageInfo.keyTable.length; i < length; i++) {
 				String[] pkgName = (String[]) rawPackageInfo.keyTable[i];
@@ -110,7 +114,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 				throw new JavaModelException(e);
 			}
 		} finally {
-			hModelManager().closeZipFile(jar);
+			getJavaModelManager().closeZipFile(jar);
 		}
 
 		info.setChildren(children);
@@ -147,21 +151,27 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public String getElementName() {
 		return this.jarPath.lastSegment();
 	}
+	public URL getIndexPath() {
+		try {
+			IClasspathEntry entry = ((JavaProject) getParent()).getClasspathEntryFor(getPath());
+			if (entry != null) return ((ClasspathEntry)entry).getLibraryIndexLocation();	
+		} catch (JavaModelException e) {
+			// ignore exception
+		}
+		return null;
+	}
 	/**
 	 * Returns the underlying ZipFile for this Jar package fragment root.
 	 *
 	 * @exception CoreException if an error occurs accessing the jar
 	 */
 	public ZipFile getJar() throws CoreException {
-		return hModelManager().getZipFile(getPath());
+		return getJavaModelManager().getZipFile(getPath());
 	}
 	/**
 	 * @see IPackageFragmentRoot
 	 */
 	public int getKind() {
-		return IPackageFragmentRoot.K_BINARY;
-	}
-	int internalKind() throws JavaModelException {
 		return IPackageFragmentRoot.K_BINARY;
 	}
 	/**
@@ -183,22 +193,6 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public PackageFragment getPackageFragment(String[] pkgName) {
 		return new JarPackageFragment(this, pkgName);
 	}
-	public IPath internalPath() {
-		if (isExternal()) {
-			return this.jarPath;
-		} else {
-			return super.internalPath();
-		}
-	}
-	public IResource resource(PackageFragmentRoot root) {
-		if (this.resource == null) {
-			// external jar
-			return null;
-		}
-		return super.resource(root);
-	}
-
-
 	/**
 	 * @see IJavaElement
 	 */
@@ -213,18 +207,6 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public int hashCode() {
 		return this.jarPath.hashCode();
 	}
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof JarPackageFragmentRoot;
-	}
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		if (isExternal())
-			// don't show project as it is irrelevant for external jar files.
-			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
-			return;
-		super.hToStringAncestors(builder, context);
-	}
 	private void initRawPackageInfo(HashtableOfArrayToObject rawPackageInfo, String entryName, boolean isDirectory, String compliance) {
 		int lastSeparator = isDirectory ? entryName.length()-1 : entryName.lastIndexOf('/');
 		String[] pkgName = Util.splitOn('/', entryName, 0, lastSeparator);
@@ -236,7 +218,7 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 			if (existing != null) break;
 			existingLength--;
 		}
-		JavaModelManager manager = hModelManager();
+		JavaModelManager manager = getJavaModelManager();
 		for (int i = existingLength; i < length; i++) {
 			// sourceLevel must be null because we know nothing about it based on a jar file
 			if (Util.isValidFolderNameForPackage(pkgName[i], null, compliance)) {
@@ -268,6 +250,18 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 		}
 
 	}
+
+
+	int internalKind() throws JavaModelException {
+		return IPackageFragmentRoot.K_BINARY;
+	}
+	public IPath internalPath() {
+		if (isExternal()) {
+			return this.jarPath;
+		} else {
+			return super.internalPath();
+		}
+	}
 	/**
 	 * @see IPackageFragmentRoot
 	 */
@@ -286,6 +280,13 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 	public boolean isReadOnly() {
 		return true;
 	}
+	public IResource resource(PackageFragmentRoot root) {
+		if (this.resource == null) {
+			// external jar
+			return null;
+		}
+		return super.resource(root);
+	}
 
 	/**
 	 * Returns whether the corresponding resource or associated file exists
@@ -301,14 +302,13 @@ public class JarPackageFragmentRoot extends PackageFragmentRoot {
 		}
 	}
 
-	public URL getIndexPath() {
-		try {
-			IClasspathEntry entry = ((JavaProject) getParent()).getClasspathEntryFor(getPath());
-			if (entry != null) return ((ClasspathEntry)entry).getLibraryIndexLocation();	
-		} catch (JavaModelException e) {
-			// ignore exception
-		}
-		return null;
+	@Override
+	public void toStringAncestors_(StringBuilder builder, IContext context) {
+		if (isExternal())
+			// don't show project as it is irrelevant for external jar files.
+			// also see https://bugs.eclipse.org/bugs/show_bug.cgi?id=146615
+			return;
+		super.toStringAncestors_(builder, context);
 	}
 
 }

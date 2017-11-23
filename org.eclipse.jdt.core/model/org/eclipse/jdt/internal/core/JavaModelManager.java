@@ -92,7 +92,7 @@ import org.eclipse.core.runtime.preferences.IEclipsePreferences.PreferenceChange
 import org.eclipse.core.runtime.preferences.IPreferencesService;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.handly.model.IModel;
-import org.eclipse.handly.model.impl.IModelManager;
+import org.eclipse.handly.model.impl.support.IModelManager;
 import org.eclipse.jdt.core.ClasspathContainerInitializer;
 import org.eclipse.jdt.core.IAccessRule;
 import org.eclipse.jdt.core.IClassFile;
@@ -1879,9 +1879,9 @@ public class JavaModelManager implements IModelManager, ISaveParticipant, IConte
 
 			// compute the delta if needed and register it if there are changes
 			if (deltaBuilder != null) {
-				deltaBuilder.buildDelta();
-				if (!deltaBuilder.isEmptyDelta()) {
-					getDeltaProcessor().registerJavaModelDelta(deltaBuilder.getDelta());
+				deltaBuilder.buildDeltas();
+				if (deltaBuilder.delta != null) {
+					getDeltaProcessor().registerJavaModelDelta(deltaBuilder.delta);
 				}
 			}
 		}
@@ -2021,7 +2021,7 @@ public class JavaModelManager implements IModelManager, ISaveParticipant, IConte
 	 *  Returns the info for the element.
 	 */
 	public Object getInfo(IJavaElement element) {
-		return ((JavaElement) element).hFindBody();
+		return ((JavaElement) element).findBody_();
 	}
 
 	/**

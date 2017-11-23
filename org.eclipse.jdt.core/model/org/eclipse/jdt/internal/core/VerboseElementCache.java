@@ -14,7 +14,7 @@ import java.text.NumberFormat;
 import java.util.Date;
 
 import org.eclipse.handly.model.IElement;
-import org.eclipse.handly.model.impl.ElementCache;
+import org.eclipse.handly.model.impl.support.ElementCache;
 
 public class VerboseElementCache extends ElementCache {
 

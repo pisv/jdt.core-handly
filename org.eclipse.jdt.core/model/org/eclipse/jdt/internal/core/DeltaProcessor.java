@@ -306,8 +306,8 @@ public class DeltaProcessor {
 				OpenableElementInfo info = (OpenableElementInfo) parent.getElementInfo();
 				// https://bugs.eclipse.org/bugs/show_bug.cgi?id=338006
 				// Insert the package fragment roots in the same order as the classpath order.
-				if (child instanceof IPackageFragmentRoot)
-					addPackageFragmentRoot(info, (IPackageFragmentRoot) child);
+				if (child instanceof PackageFragmentRoot)
+					addPackageFragmentRoot(info, (PackageFragmentRoot) child);
 				else
 					info.addChild(child);
  			} catch (JavaModelException e) {
@@ -316,7 +316,7 @@ public class DeltaProcessor {
 		}
 	}
 	
-	private void addPackageFragmentRoot(OpenableElementInfo parent, IPackageFragmentRoot child)
+	private void addPackageFragmentRoot(OpenableElementInfo parent, PackageFragmentRoot child)
 			throws JavaModelException {
 
 		IJavaElement[] roots = parent.getChildren();
@@ -356,7 +356,7 @@ public class DeltaProcessor {
 
 			if (indexToInsert >= 0) {
 				int newSize = roots.length + 1;
-				IPackageFragmentRoot[] newChildren = new IPackageFragmentRoot[newSize];
+				JavaElement[] newChildren = new JavaElement[newSize];
 
 				if (indexToInsert > 0)
 					System.arraycopy(roots, 0, newChildren, 0, indexToInsert);

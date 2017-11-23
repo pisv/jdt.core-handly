@@ -18,7 +18,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.handly.context.IContext;
-import org.eclipse.handly.model.impl.ElementCache;
+import org.eclipse.handly.model.impl.support.ElementCache;
 import org.eclipse.handly.util.OverflowingLruCache;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.internal.core.*;
@@ -194,6 +194,20 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 			open(null);
 		}
 
+		@Override
+		public void buildStructure_(IContext context, IProgressMonitor monitor) throws CoreException {
+		}
+
+		@Override
+		public void close_(IContext context) {
+			CloseHint hint = context.get(CLOSE_HINT);
+			if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
+				return;
+			// Closes this element and removes if from the cache.
+			this.isOpen = false;
+			this.cache.remove(this);
+		}
+
 		public boolean equals(Object o) {
 			return this == o;
 		}
@@ -227,24 +241,6 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 			return this.buffer.hasUnsavedChanges();
 		}
 
-		@Override
-		public void hBuildStructure(IContext context, IProgressMonitor monitor) throws CoreException {
-		}
-
-		@Override
-		public void hClose(IContext context) {
-			CloseHint hint = context.get(CLOSE_HINT);
-			if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
-				return;
-			// Closes this element and removes if from the cache.
-			this.isOpen = false;
-			this.cache.remove(this);
-		}
-
-		@Override
-		public void hValidateExistence(IContext context) throws CoreException {
-		}
-
 		public boolean isConsistent() {
 			return true;
 		}
@@ -261,6 +257,10 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 			this.isOpen = true;
 		}
 
+		public IResource resource(PackageFragmentRoot root) {
+			return null;
+		}
+
 		public void save(IProgressMonitor pm) {
 			save(pm, false);
 		}
@@ -269,8 +269,8 @@ public class OverflowingCacheTests extends ModifyingResourceTests {
 			this.buffer.hasUnsavedChanges = false;
 		}
 
-		public IResource resource(PackageFragmentRoot root) {
-			return null;
+		@Override
+		public void validateExistence_(IContext context) throws CoreException {
 		}
 	}
 

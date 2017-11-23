@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -401,7 +401,7 @@ public void enterMethod(MethodInfo methodInfo) {
 	parentInfo.childrenCategories.put(handle, methodInfo.categories);
 }
 private SourceMethodElementInfo createMethodInfo(MethodInfo methodInfo, SourceMethod handle) {
-	IJavaElement[] elements = getChildren(methodInfo);
+	JavaElement[] elements = getChildren(methodInfo);
 	SourceMethodElementInfo info;
 	if (methodInfo.isConstructor) {
 		info = elements.length == 0 ? new SourceConstructorInfo() : new SourceConstructorWithChildrenInfo(elements);
@@ -619,7 +619,7 @@ public void exitConstructor(int declarationEnd) {
 public void exitField(int initializationStart, int declarationEnd, int declarationSourceEnd) {
 	JavaElement handle = (JavaElement) this.handleStack.peek();
 	FieldInfo fieldInfo = (FieldInfo) this.infoStack.peek();
-	IJavaElement[] elements = getChildren(fieldInfo);
+	JavaElement[] elements = getChildren(fieldInfo);
 	SourceFieldElementInfo info = elements.length == 0 ? new SourceFieldElementInfo() : new SourceFieldWithChildrenInfo(elements);
 	info.setNameSourceStart(fieldInfo.nameSourceStart);
 	info.setNameSourceEnd(fieldInfo.nameSourceEnd);
@@ -666,7 +666,7 @@ public void exitField(int initializationStart, int declarationEnd, int declarati
 public void exitInitializer(int declarationEnd) {
 	JavaElement handle = (JavaElement) this.handleStack.peek();
 	int[] initializerInfo = (int[]) this.infoStack.peek();
-	IJavaElement[] elements = getChildren(initializerInfo);
+	JavaElement[] elements = getChildren(initializerInfo);
 	
 	InitializerElementInfo info = elements.length == 0 ? new InitializerElementInfo() : new InitializerWithChildrenInfo(elements);
 	info.setSourceRangeStart(initializerInfo[0]);
@@ -756,10 +756,10 @@ protected IMemberValuePair[] getMemberValuePairs(MemberValuePair[] memberValuePa
 	}
 	return members;
 }
-private IJavaElement[] getChildren(Object info) {
+private JavaElement[] getChildren(Object info) {
 	ArrayList childrenList = (ArrayList) this.children.get(info);
 	if (childrenList != null) {
-		return (IJavaElement[]) childrenList.toArray(new IJavaElement[childrenList.size()]);
+		return (JavaElement[]) childrenList.toArray(new JavaElement[childrenList.size()]);
 	}
 	return JavaElement.NO_ELEMENTS;
 }

@@ -14,9 +14,11 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.handly.context.IContext;
+import org.eclipse.handly.model.IElement;
 import org.eclipse.handly.model.ISourceConstruct;
 import org.eclipse.handly.model.ISourceElementInfo;
-import org.eclipse.handly.model.impl.ISourceConstructImplSupport;
+import org.eclipse.handly.model.impl.support.ISourceConstructImplSupport;
 import org.eclipse.handly.snapshot.ISnapshot;
 import org.eclipse.handly.util.Property;
 import org.eclipse.handly.util.TextRange;
@@ -144,7 +146,25 @@ public IJavaElement getHandleUpdatingCountFromMemento(MementoTokenizer memento, 
  * @see IMember#getOccurrenceCount()
  */
 public final int getOccurrenceCount() {
-	return hOccurrenceCount();
+	return getOccurrenceCount_();
+}
+@Override
+public int getOccurrenceCount_() {
+	return this.occurrenceCount;
+}
+/**
+ * Return the first instance of IOpenable in the hierarchy of this
+ * type (going up the hierarchy from this type);
+ */
+public IOpenable getOpenableParent() {
+	IJavaElement current = getParent();
+	while (current != null){
+		if (current instanceof IOpenable){
+			return (IOpenable) current;
+		}
+		current = current.getParent();
+	}
+	return null;
 }
 /*
  * @see IJavaElement
@@ -173,6 +193,41 @@ public String getSource() throws JavaModelException {
 		return null;
 	}
 }
+@Override
+public ISourceElementInfo getSourceElementInfo_(IContext context, IProgressMonitor monitor) throws CoreException {
+	IElement[] children = getChildren_(context, monitor);
+	ISourceRange sourceRange = getSourceRange();
+	ISourceRange nameRange = getNameRange();
+	return new ISourceElementInfo() {
+		
+		@Override
+		public <T> T get(Property<T> property) {
+			return null;
+		}
+		@Override
+		public ISourceConstruct[] getChildren() {
+			ISourceConstruct[] result = new ISourceConstruct[children.length];
+			System.arraycopy(children, 0, result, 0, children.length);
+			return result;
+		}
+		@Override
+		public TextRange getFullRange() {
+			if (sourceRange != null && SourceRange.isAvailable(sourceRange))
+				return new TextRange(sourceRange.getOffset(), sourceRange.getLength());
+			return null;
+		}
+		@Override
+		public TextRange getIdentifyingRange() {
+			if (nameRange != null && SourceRange.isAvailable(nameRange))
+				return new TextRange(nameRange.getOffset(), nameRange.getLength());
+			return null;
+		}
+		@Override
+		public ISnapshot getSnapshot() {
+			return null;
+		}
+	};
+}
 /**
  * @see ISourceReference
  */
@@ -195,49 +250,6 @@ public boolean hasChildren() throws JavaModelException {
 }
 public int hashCode() {
 	return Util.combineHashCodes(super.hashCode(), this.occurrenceCount);
-}
-@Override
-public void hIncrementOccurrenceCount() {
-	this.occurrenceCount++;
-}
-@Override
-public int hOccurrenceCount() {
-	return this.occurrenceCount;
-}
-@Override
-public ISourceElementInfo hSourceElementInfo() throws CoreException {
-	IJavaElement[] children = getChildren();
-	ISourceRange sourceRange = getSourceRange();
-	ISourceRange nameRange = getNameRange();
-	return new ISourceElementInfo() {
-		
-		@Override
-		public ISnapshot getSnapshot() {
-			return null;
-		}
-		@Override
-		public TextRange getIdentifyingRange() {
-			if (nameRange != null && SourceRange.isAvailable(nameRange))
-				return new TextRange(nameRange.getOffset(), nameRange.getLength());
-			return null;
-		}
-		@Override
-		public TextRange getFullRange() {
-			if (sourceRange != null && SourceRange.isAvailable(sourceRange))
-				return new TextRange(sourceRange.getOffset(), sourceRange.getLength());
-			return null;
-		}
-		@Override
-		public ISourceConstruct[] getChildren() {
-			ISourceConstruct[] result = new ISourceConstruct[children.length];
-			System.arraycopy(children, 0, result, 0, children.length);
-			return result;
-		}
-		@Override
-		public <T> T get(Property<T> property) {
-			return null;
-		}
-	};
 }
 /**
  * @see IJavaElement
@@ -282,5 +294,11 @@ public void rename(String newName, boolean force, IProgressMonitor monitor) thro
  */
 public IResource resource() {
 	return this.parent.resource();
+}
+@Override
+public void setOccurrenceCount_(int occurrenceCount) {
+	if (occurrenceCount < 1)
+		throw new IllegalArgumentException();
+	this.occurrenceCount = occurrenceCount;
 }
 }

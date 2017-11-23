@@ -16,8 +16,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.eclipse.handly.model.IElement;
-import org.eclipse.handly.model.impl.ElementCache;
-import org.eclipse.handly.model.impl.IBodyCache;
+import org.eclipse.handly.model.impl.support.ElementCache;
+import org.eclipse.handly.model.impl.support.IBodyCache;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.internal.core.util.LRUCache;
 import org.eclipse.jdt.internal.core.util.Util;
@@ -214,15 +214,15 @@ public void put(IElement e, Object body) {
 			break;
 		case IJavaElement.JAVA_PROJECT:
 			this.projectCache.put(e, body);
-			this.rootCache.ensureSpaceLimit(body, e);
+			this.rootCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
 			this.rootCache.put(e, body);
-			this.pkgCache.ensureSpaceLimit(body, e);
+			this.pkgCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT:
 			this.pkgCache.put(e, body);
-			this.openableCache.ensureSpaceLimit(body, e);
+			this.openableCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
 			break;
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:

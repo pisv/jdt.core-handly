@@ -31,7 +31,6 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.handly.context.IContext;
-import org.eclipse.handly.model.IElement;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
@@ -48,11 +47,87 @@ import org.eclipse.jdt.internal.core.util.Util;
 
 public class ClassFile extends Openable implements IClassFile, SuffixConstants {
 
-	protected String name;
-	protected BinaryType binaryType = null;
+	/* package */ static String simpleName(char[] className) {
+		if (className == null)
+			return null;
+		String simpleName = new String(unqualifiedName(className));
+		int lastDollar = simpleName.lastIndexOf('$');
+		if (lastDollar != -1)
+			return Util.localTypeName(simpleName, lastDollar, simpleName.length());
+		else
+			return simpleName;
+	}
+	/**
+	 * Returns the Java Model representation of the given name
+	 * which is provided in diet class file format, or <code>null</code>
+	 * if the given name is <code>null</code>.
+	 *
+	 * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
+	 * and corresponding Java Model format is "java.lang.Object".
+	 */
+	
+	public static char[] translatedName(char[] name) {
+		if (name == null)
+			return null;
+		int nameLength = name.length;
+		char[] newName= new char[nameLength];
+		for (int i= 0; i < nameLength; i++) {
+			if (name[i] == '/') {
+				newName[i]= '.';
+			} else {
+				newName[i]= name[i];
+			}
+		}
+		return newName;
+	}
 
-	private IPath externalAnnotationBase;
+	/**
+	 * Returns the Java Model representation of the given names
+	 * which are provided in diet class file format, or <code>null</code>
+	 * if the given names are <code>null</code>.
+	 *
+	 * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
+	 * and corresponding Java Model format is "java.lang.Object".
+	 */
+	
+	/* package */ static char[][] translatedNames(char[][] names) {
+		if (names == null)
+			return null;
+		int length = names.length;
+		char[][] newNames = new char[length][];
+		for(int i = 0; i < length; i++) {
+			newNames[i] = translatedName(names[i]);
+		}
+		return newNames;
+	}
 
+/**
+ * Returns the Java Model format of the unqualified class name for the
+ * given className which is provided in diet class file format,
+ * or <code>null</code> if the given className is <code>null</code>.
+ * (This removes the package name, but not enclosing type names).
+ *
+ * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
+ * and corresponding Java Model simple name format is "Object".
+ */
+
+/* package */ static char[] unqualifiedName(char[] className) {
+	if (className == null)
+		return null;
+	int count = 0;
+	for (int i = className.length - 1; i > -1; i--) {
+		if (className[i] == '/') {
+			char[] name = new char[count];
+			System.arraycopy(className, i + 1, name, 0, count);
+			return name;
+		}
+		count++;
+	}
+	return className;
+}
+protected String name;
+protected BinaryType binaryType = null;
+private IPath externalAnnotationBase;
 /*
  * Creates a handle to a class file.
  */
@@ -60,12 +135,13 @@ protected ClassFile(PackageFragment parent, String nameWithoutExtension) {
 	super(parent);
 	this.name = nameWithoutExtension;
 }
+
 /*
  * @see IClassFile#becomeWorkingCopy(IProblemRequestor, WorkingCopyOwner, IProgressMonitor)
  */
 public ICompilationUnit becomeWorkingCopy(IProblemRequestor problemRequestor, WorkingCopyOwner owner, IProgressMonitor monitor) throws JavaModelException {
 	CompilationUnit workingCopy = new ClassFileWorkingCopy(this, owner == null ? DefaultWorkingCopyOwner.PRIMARY : owner);
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo = getJavaModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true /*record usage*/, null/*no problem requestor needed*/);
 	if (perWorkingCopyInfo == null) {
 		// close cu and its children
 		close();
@@ -77,25 +153,35 @@ public ICompilationUnit becomeWorkingCopy(IProblemRequestor problemRequestor, Wo
 	}
 	return perWorkingCopyInfo.workingCopy;
 }
+@Override
+public void buildStructure_(IContext context, IProgressMonitor pm) throws CoreException {
+	ClassFileInfo info = new ClassFileInfo();
+	context.get(NEW_ELEMENTS).put(this, info);
 
-/**
- * @see ICodeAssist#codeComplete(int, ICompletionRequestor)
- * @deprecated
- */
-public void codeComplete(int offset, ICompletionRequestor requestor) throws JavaModelException {
-	codeComplete(offset, requestor, DefaultWorkingCopyOwner.PRIMARY);
-}
-/**
- * @see ICodeAssist#codeComplete(int, ICompletionRequestor, WorkingCopyOwner)
- * @deprecated
- */
-public void codeComplete(int offset, ICompletionRequestor requestor, WorkingCopyOwner owner) throws JavaModelException {
-	if (requestor == null) {
-		throw new IllegalArgumentException("Completion requestor cannot be null"); //$NON-NLS-1$
+	IBinaryType typeInfo = getBinaryTypeInfo((IFile) resource());
+	if (typeInfo == null) {
+		// The structure of a class file is unknown if a class file format errors occurred
+		//during the creation of the diet class file representative of this ClassFile.
+		info.setChildren(new JavaElement[] {});
+		info.setIsStructureKnown(false);
+		return;
 	}
-	codeComplete(offset, new org.eclipse.jdt.internal.codeassist.CompletionRequestorWrapper(requestor), owner);
+
+	// Make the type
+	BinaryType type = (BinaryType) getType();
+	info.setChildren(new JavaElement[] {type});
+	context.get(NEW_ELEMENTS).put(type, typeInfo);
+
+	// Read children
+	info.readBinaryChildren(this, context.get(NEW_ELEMENTS), typeInfo);
+	info.setIsStructureKnown(true);
 }
 
+void closeAndRemoveFromJarTypeCache() throws JavaModelException {
+	super.close();
+	// triggered when external annotations have changed we need to recreate this class file
+	getJavaModelManager().getElementManager().removeFromJarTypeCache(this.binaryType);
+}
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.ICodeAssist#codeComplete(int, org.eclipse.jdt.core.CompletionRequestor)
  */
@@ -114,6 +200,7 @@ public void codeComplete(int offset, CompletionRequestor requestor, IProgressMon
 public void codeComplete(int offset, CompletionRequestor requestor, WorkingCopyOwner owner) throws JavaModelException {
 	codeComplete(offset, requestor, owner, null);
 }
+
 /* (non-Javadoc)
  * @see org.eclipse.jdt.core.ICodeAssist#codeComplete(int, org.eclipse.jdt.core.CompletionRequestor, org.eclipse.jdt.core.WorkingCopyOwner, org.eclipse.core.runtime.IProgressMonitor)
  */
@@ -130,7 +217,82 @@ public void codeComplete(int offset, CompletionRequestor requestor, WorkingCopyO
 		codeComplete(cu, cu, offset, requestor, owner, null/*extended context isn't computed*/, monitor);
 	}
 }
+/**
+ * @see ICodeAssist#codeComplete(int, ICompletionRequestor)
+ * @deprecated
+ */
+public void codeComplete(int offset, ICompletionRequestor requestor) throws JavaModelException {
+	codeComplete(offset, requestor, DefaultWorkingCopyOwner.PRIMARY);
+}
+/**
+ * @see ICodeAssist#codeComplete(int, ICompletionRequestor, WorkingCopyOwner)
+ * @deprecated
+ */
+public void codeComplete(int offset, ICompletionRequestor requestor, WorkingCopyOwner owner) throws JavaModelException {
+	if (requestor == null) {
+		throw new IllegalArgumentException("Completion requestor cannot be null"); //$NON-NLS-1$
+	}
+	codeComplete(offset, new org.eclipse.jdt.internal.codeassist.CompletionRequestorWrapper(requestor), owner);
+}
 
+/**
+ * @see ICodeAssist#codeComplete(int, ICodeCompletionRequestor)
+ * @deprecated - should use codeComplete(int, ICompletionRequestor) instead
+ */
+public void codeComplete(int offset, final org.eclipse.jdt.core.ICodeCompletionRequestor requestor) throws JavaModelException {
+
+	if (requestor == null){
+		codeComplete(offset, (ICompletionRequestor)null);
+		return;
+	}
+	codeComplete(
+		offset,
+		new ICompletionRequestor(){
+			public void acceptAnonymousType(char[] superTypePackageName,char[] superTypeName, char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance) {
+				// ignore
+			}
+			public void acceptClass(char[] packageName, char[] className, char[] completionName, int modifiers, int completionStart, int completionEnd, int relevance) {
+				requestor.acceptClass(packageName, className, completionName, modifiers, completionStart, completionEnd);
+			}
+			public void acceptError(IProblem error) {
+				// was disabled in 1.0
+			}
+			public void acceptField(char[] declaringTypePackageName, char[] declaringTypeName, char[] fieldName, char[] typePackageName, char[] typeName, char[] completionName, int modifiers, int completionStart, int completionEnd, int relevance) {
+				requestor.acceptField(declaringTypePackageName, declaringTypeName, fieldName, typePackageName, typeName, completionName, modifiers, completionStart, completionEnd);
+			}
+			public void acceptInterface(char[] packageName,char[] interfaceName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance) {
+				requestor.acceptInterface(packageName, interfaceName, completionName, modifiers, completionStart, completionEnd);
+			}
+			public void acceptKeyword(char[] keywordName,int completionStart,int completionEnd, int relevance){
+				requestor.acceptKeyword(keywordName, completionStart, completionEnd);
+			}
+			public void acceptLabel(char[] labelName,int completionStart,int completionEnd, int relevance){
+				requestor.acceptLabel(labelName, completionStart, completionEnd);
+			}
+			public void acceptLocalVariable(char[] localVarName,char[] typePackageName,char[] typeName,int modifiers,int completionStart,int completionEnd, int relevance){
+				// ignore
+			}
+			public void acceptMethod(char[] declaringTypePackageName,char[] declaringTypeName,char[] selector,char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] returnTypePackageName,char[] returnTypeName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance){
+				// skip parameter names
+				requestor.acceptMethod(declaringTypePackageName, declaringTypeName, selector, parameterPackageNames, parameterTypeNames, returnTypePackageName, returnTypeName, completionName, modifiers, completionStart, completionEnd);
+			}
+			public void acceptMethodDeclaration(char[] declaringTypePackageName,char[] declaringTypeName,char[] selector,char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] returnTypePackageName,char[] returnTypeName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance){
+				// ignore
+			}
+			public void acceptModifier(char[] modifierName,int completionStart,int completionEnd, int relevance){
+				requestor.acceptModifier(modifierName, completionStart, completionEnd);
+			}
+			public void acceptPackage(char[] packageName,char[] completionName,int completionStart,int completionEnd, int relevance){
+				requestor.acceptPackage(packageName, completionName, completionStart, completionEnd);
+			}
+			public void acceptType(char[] packageName,char[] typeName,char[] completionName,int completionStart,int completionEnd, int relevance){
+				requestor.acceptType(packageName, typeName, completionName, completionStart, completionEnd);
+			}
+			public void acceptVariableName(char[] typePackageName,char[] typeName,char[] varName,char[] completionName,int completionStart,int completionEnd, int relevance){
+				// ignore
+			}
+		});
+}
 /**
  * @see ICodeAssist#codeSelect(int, int)
  */
@@ -154,7 +316,7 @@ public IJavaElement[] codeSelect(int offset, int length, WorkingCopyOwner owner)
 }
 public boolean existsUsingJarTypeCache() {
 	if (getPackageFragmentRoot().isArchive()) {
-		JavaModelManager manager = hModelManager();
+		JavaModelManager manager = getJavaModelManager();
 		IType type = getType();
 		Object info = manager.getInfo(type);
 		if (info == JavaModelCache.NON_EXISTING_JAR_TYPE_INFO)
@@ -187,7 +349,6 @@ public boolean existsUsingJarTypeCache() {
 	} else
 		return exists();
 }
-
 /**
  * Finds the deepest <code>IJavaElement</code> in the hierarchy of
  * <code>elt</elt>'s children (including <code>elt</code> itself)
@@ -214,6 +375,7 @@ protected IJavaElement findElement(IJavaElement elt, int position, SourceMapper 
 	}
 	return elt;
 }
+
 /**
  * @see ITypeRoot#findPrimaryType()
  */
@@ -227,6 +389,7 @@ public IType findPrimaryType() {
 public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
 	return getType().getAttachedJavadoc(monitor);
 }
+
 /**
  * Returns the <code>ClassFileReader</code>specific for this IClassFile, based
  * on its underlying resource, or <code>null</code> if unable to create
@@ -276,7 +439,20 @@ public IBinaryType getBinaryTypeInfo(IFile file, boolean fullyInitialize) throws
 		}
 	}
 }
-
+public IBuffer getBuffer() throws JavaModelException {
+	IStatus status = validateClassFile();
+	if (status.isOK()) {
+		return super.getBuffer();
+	} else {
+		switch (status.getCode()) {
+		case IJavaModelStatusConstants.ELEMENT_NOT_ON_CLASSPATH: // don't throw a JavaModelException to be able to open .class file outside the classpath (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=138507 )
+		case IJavaModelStatusConstants.INVALID_ELEMENT_TYPES: // don't throw a JavaModelException to be able to open .class file in proj==src case without source (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=221904 )
+			return null;
+		default:
+			throw new JavaModelException((IJavaModelStatus) status);
+		}
+	}
+}
 public byte[] getBytes() throws JavaModelException {
 	JavaElement pkg = (JavaElement) getParent();
 	if (pkg instanceof JarPackageFragment) {
@@ -299,121 +475,17 @@ public byte[] getBytes() throws JavaModelException {
 				throw new JavaModelException(e);
 			}
 		} finally {
-			hModelManager().closeZipFile(zip);
+			getJavaModelManager().closeZipFile(zip);
 		}
 	} else {
 		IFile file = (IFile) resource();
 		return Util.getResourceContentsAsByteArray(file);
 	}
 }
-private IBinaryType getJarBinaryTypeInfo(PackageFragment pkg, boolean fullyInitialize) throws CoreException, IOException, ClassFormatException {
-	JarPackageFragmentRoot root = (JarPackageFragmentRoot) pkg.getParent();
-	ZipFile zip = null;
-	ZipFile annotationZip = null;
-	try {
-		zip = root.getJar();
-		String entryName = Util.concatWith(pkg.names, getElementName(), '/');
-		ZipEntry ze = zip.getEntry(entryName);
-		if (ze != null) {
-			byte contents[] = org.eclipse.jdt.internal.compiler.util.Util.getZipEntryByteContent(ze, zip);
-			String fileName = root.getHandleIdentifier() + IDependent.JAR_FILE_ENTRY_SEPARATOR + entryName;
-			ClassFileReader reader = new ClassFileReader(contents, fileName.toCharArray(), fullyInitialize);
-			if (root.getKind() == IPackageFragmentRoot.K_BINARY) {
-				JavaProject javaProject = (JavaProject) getAncestor(IJavaElement.JAVA_PROJECT);
-				IClasspathEntry entry = javaProject.getClasspathEntryFor(getPath());
-				if (entry != null) {
-					IProject project = javaProject.getProject();
-					IPath externalAnnotationPath = ClasspathEntry.getExternalAnnotationPath(entry, project, false); // unresolved for use in ExternalAnnotationTracker
-					if (externalAnnotationPath != null) {
-						setupExternalAnnotationProvider(project, externalAnnotationPath, annotationZip, reader, 
-								entryName.substring(0, entryName.length() - SuffixConstants.SUFFIX_CLASS.length));
-					} else if (entry.getEntryKind() == IClasspathEntry.CPE_SOURCE) {
-						reader.markAsFromSource();
-					}
-				}
-			}
-			return reader;
-		}
-	} finally {
-		hModelManager().closeZipFile(zip);
-		hModelManager().closeZipFile(annotationZip);
-	}
-	return null;
-}
-
-private void setupExternalAnnotationProvider(IProject project, final IPath externalAnnotationPath,
-		ZipFile annotationZip, ClassFileReader reader, final String typeName)
-{
-	// try resolve path within the workspace:
-	IWorkspaceRoot root = project.getWorkspace().getRoot();
-	IResource resource;
-	if (externalAnnotationPath.segmentCount() == 1) {
-		resource = root.getProject(externalAnnotationPath.lastSegment());
-	} else {
-		resource = root.getFolder(externalAnnotationPath);
-		if (!resource.exists())
-			resource = root.getFile(externalAnnotationPath);
-	}
-	String resolvedPath;
-	if (resource.exists()) {
-		if (resource.isVirtual()) {
-			Util.log(new Status(IStatus.ERROR, JavaCore.PLUGIN_ID, 
-					"Virtual resource "+externalAnnotationPath+" cannot be used as annotationpath for project "+project.getName())); //$NON-NLS-1$ //$NON-NLS-2$
-			return;
-		}
-		resolvedPath = resource.getLocation().toString(); // workspace lookup succeeded -> resolve it
-	} else {
-		resolvedPath = externalAnnotationPath.toString(); // not in workspace, use as is
-	}
-	try {
-		annotationZip = reader.setExternalAnnotationProvider(resolvedPath, typeName, annotationZip, new ClassFileReader.ZipFileProducer() {
-			@Override public ZipFile produce() throws IOException {
-				try {
-					return hModelManager().getZipFile(externalAnnotationPath); // use (absolute, but) unresolved path here
-				} catch (CoreException e) {
-					throw new IOException("Failed to read annotation file for "+typeName+" from "+externalAnnotationPath.toString(), e); //$NON-NLS-1$ //$NON-NLS-2$
-				}
-			}});
-	} catch (IOException e) {
-		Util.log(e);
-		return;
-	}
-	if (annotationZip == null) {
-		// Additional change listening for individual types only when annotations are in individual files.
-		// Note that we also listen for classes that don't yet have an annotation file, to detect its creation
-		this.externalAnnotationBase = externalAnnotationPath; // remember so we can unregister later
-		ExternalAnnotationTracker.registerClassFile(externalAnnotationPath, new Path(typeName), this);
-	}
-}
-void closeAndRemoveFromJarTypeCache() throws JavaModelException {
-	super.close();
-	// triggered when external annotations have changed we need to recreate this class file
-	hElementManager().removeFromJarTypeCache(this.binaryType);
-}
-public IBuffer getBuffer() throws JavaModelException {
-	IStatus status = validateClassFile();
-	if (status.isOK()) {
-		return super.getBuffer();
-	} else {
-		switch (status.getCode()) {
-		case IJavaModelStatusConstants.ELEMENT_NOT_ON_CLASSPATH: // don't throw a JavaModelException to be able to open .class file outside the classpath (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=138507 )
-		case IJavaModelStatusConstants.INVALID_ELEMENT_TYPES: // don't throw a JavaModelException to be able to open .class file in proj==src case without source (see https://bugs.eclipse.org/bugs/show_bug.cgi?id=221904 )
-			return null;
-		default:
-			throw new JavaModelException((IJavaModelStatus) status);
-		}
-	}
-}
 /**
  * @see IMember
  */
 public IClassFile getClassFile() {
-	return this;
-}
-/**
- * @see IMember#getTypeRoot()
- */
-public ITypeRoot getTypeRoot() {
 	return this;
 }
 /**
@@ -521,6 +593,53 @@ public IJavaElement getHandleFromMemento(String token, MementoTokenizer memento,
 protected char getHandleMementoDelimiter() {
 	return JavaElement.JEM_CLASSFILE;
 }
+private IBinaryType getJarBinaryTypeInfo(PackageFragment pkg, boolean fullyInitialize) throws CoreException, IOException, ClassFormatException {
+	JarPackageFragmentRoot root = (JarPackageFragmentRoot) pkg.getParent();
+	ZipFile zip = null;
+	ZipFile annotationZip = null;
+	try {
+		zip = root.getJar();
+		String entryName = Util.concatWith(pkg.names, getElementName(), '/');
+		ZipEntry ze = zip.getEntry(entryName);
+		if (ze != null) {
+			byte contents[] = org.eclipse.jdt.internal.compiler.util.Util.getZipEntryByteContent(ze, zip);
+			String fileName = root.getHandleIdentifier() + IDependent.JAR_FILE_ENTRY_SEPARATOR + entryName;
+			ClassFileReader reader = new ClassFileReader(contents, fileName.toCharArray(), fullyInitialize);
+			if (root.getKind() == IPackageFragmentRoot.K_BINARY) {
+				JavaProject javaProject = (JavaProject) getAncestor(IJavaElement.JAVA_PROJECT);
+				IClasspathEntry entry = javaProject.getClasspathEntryFor(getPath());
+				if (entry != null) {
+					IProject project = javaProject.getProject();
+					IPath externalAnnotationPath = ClasspathEntry.getExternalAnnotationPath(entry, project, false); // unresolved for use in ExternalAnnotationTracker
+					if (externalAnnotationPath != null) {
+						setupExternalAnnotationProvider(project, externalAnnotationPath, annotationZip, reader, 
+								entryName.substring(0, entryName.length() - SuffixConstants.SUFFIX_CLASS.length));
+					} else if (entry.getEntryKind() == IClasspathEntry.CPE_SOURCE) {
+						reader.markAsFromSource();
+					}
+				}
+			}
+			return reader;
+		}
+	} finally {
+		getJavaModelManager().closeZipFile(zip);
+		getJavaModelManager().closeZipFile(annotationZip);
+	}
+	return null;
+}
+public ISourceRange getNameRange() {
+	return null;
+}
+/** Returns the type of the top-level declaring class used to find the source code */
+private IType getOuterMostEnclosingType() {
+	IType type = getType();
+	IType enclosingType = type.getDeclaringType();
+	while (enclosingType != null) {
+		type = enclosingType;
+		enclosingType = type.getDeclaringType();
+	}
+	return type;
+}
 /*
  * @see IJavaElement
  */
@@ -531,12 +650,6 @@ public IPath getPath() {
 	} else {
 		return getParent().getPath().append(getElementName());
 	}
-}
-/*
- * @see IJavaElement
- */
-public IResource resource(PackageFragmentRoot root) {
-	return ((IContainer) ((Openable) this.parent).resource(root)).getFile(new Path(getElementName()));
 }
 /**
  * @see ISourceReference
@@ -588,19 +701,11 @@ public String getTypeName() {
 	int lastDollar = this.name.lastIndexOf('$');
 	return lastDollar > -1 ? Util.localTypeName(this.name, lastDollar, this.name.length()) : this.name;
 }
-/*
- * @see IClassFile
+/**
+ * @see IMember#getTypeRoot()
  */
-public ICompilationUnit getWorkingCopy(WorkingCopyOwner owner, IProgressMonitor monitor) throws JavaModelException {
-	CompilationUnit workingCopy = new ClassFileWorkingCopy(this, owner == null ? DefaultWorkingCopyOwner.PRIMARY : owner);
-	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo =
-		hModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
-	if (perWorkingCopyInfo != null) {
-		return perWorkingCopyInfo.getWorkingCopy(); // return existing handle instead of the one created above
-	}
-	BecomeWorkingCopyOperation op = new BecomeWorkingCopyOperation(workingCopy, null);
-	op.runOperation(monitor);
-	return workingCopy;
+public ITypeRoot getTypeRoot() {
+	return this;
 }
 /**
  * @see IClassFile
@@ -609,58 +714,25 @@ public ICompilationUnit getWorkingCopy(WorkingCopyOwner owner, IProgressMonitor 
 public IJavaElement getWorkingCopy(IProgressMonitor monitor, org.eclipse.jdt.core.IBufferFactory factory) throws JavaModelException {
 	return getWorkingCopy(BufferFactoryWrapper.create(factory), monitor);
 }
+/*
+ * @see IClassFile
+ */
+public ICompilationUnit getWorkingCopy(WorkingCopyOwner owner, IProgressMonitor monitor) throws JavaModelException {
+	CompilationUnit workingCopy = new ClassFileWorkingCopy(this, owner == null ? DefaultWorkingCopyOwner.PRIMARY : owner);
+	JavaModelManager.PerWorkingCopyInfo perWorkingCopyInfo =
+		getJavaModelManager().getPerWorkingCopyInfo(workingCopy, false/*don't create*/, true/*record usage*/, null/*not used since don't create*/);
+	if (perWorkingCopyInfo != null) {
+		return perWorkingCopyInfo.getWorkingCopy(); // return existing handle instead of the one created above
+	}
+	BecomeWorkingCopyOperation op = new BecomeWorkingCopyOperation(workingCopy, null);
+	op.runOperation(monitor);
+	return workingCopy;
+}
 /**
  * @see Openable
  */
 protected boolean hasBuffer() {
 	return true;
-}
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	ClassFileInfo info = new ClassFileInfo();
-	context.get(NEW_ELEMENTS).put(this, info);
-
-	IBinaryType typeInfo = getBinaryTypeInfo((IFile) resource());
-	if (typeInfo == null) {
-		// The structure of a class file is unknown if a class file format errors occurred
-		//during the creation of the diet class file representative of this ClassFile.
-		info.setChildren(new IJavaElement[] {});
-		info.setIsStructureKnown(false);
-		return;
-	}
-
-	// Make the type
-	IType type = getType();
-	info.setChildren(new IJavaElement[] {type});
-	context.get(NEW_ELEMENTS).put((IElement) type, typeInfo);
-
-	// Read children
-	info.readBinaryChildren(this, context.get(NEW_ELEMENTS), typeInfo);
-	info.setIsStructureKnown(true);
-}
-@Override
-public void hRemove(IContext context) {
-	if (this.externalAnnotationBase != null) {
-		String entryName = Util.concatWith(((PackageFragment) getParent()).names, this.name, '/');
-		ExternalAnnotationTracker.unregisterClassFile(this.externalAnnotationBase, new Path(entryName));
-	}
-	super.hRemove(context);
-}
-@Override
-public void hValidateExistence(IContext context) throws CoreException {
-	// check whether the class file can be opened
-	IStatus status = validateClassFile();
-	if (!status.isOK())
-		throw newJavaModelException(status);
-	IResource underlyingResource = resource();
-	if (underlyingResource != null) {
-		if (!underlyingResource.isAccessible())
-			throw hDoesNotExistException();
-		PackageFragmentRoot root;
-		if ((underlyingResource instanceof IFolder) && (root = getPackageFragmentRoot()).isArchive()) { // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=204652
-			throw root.hDoesNotExistException();
-		}
-	}
 }
 /**
  * @see IClassFile
@@ -679,38 +751,6 @@ public boolean isInterface() throws JavaModelException {
  */
 public boolean isReadOnly() {
 	return true;
-}
-private IStatus validateClassFile() {
-	IPackageFragmentRoot root = getPackageFragmentRoot();
-	try {
-		if (root.getKind() != IPackageFragmentRoot.K_BINARY)
-			return new JavaModelStatus(IJavaModelStatusConstants.INVALID_ELEMENT_TYPES, root);
-	} catch (JavaModelException e) {
-		return e.getJavaModelStatus();
-	}
-	IJavaProject project = getJavaProject();
-	return JavaConventions.validateClassFileName(getElementName(), project.getOption(JavaCore.COMPILER_SOURCE, true), project.getOption(JavaCore.COMPILER_COMPLIANCE, true));
-}
-/**
- * Opens and returns buffer on the source code associated with this class file.
- * Maps the source code to the children elements of this class file.
- * If no source code is associated with this class file,
- * <code>null</code> is returned.
- *
- * @see Openable
- */
-protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelException {
-	// Check the cache for the top-level type first
-	IType outerMostEnclosingType = getOuterMostEnclosingType();
-	IBuffer buffer = getBufferManager().getBuffer(outerMostEnclosingType.getClassFile());
-	if (buffer == null) {
-		SourceMapper mapper = getSourceMapper();
-		IBinaryType typeInfo = info instanceof IBinaryType ? (IBinaryType) info : null;
-		if (mapper != null) {
-			buffer = mapSource(mapper, typeInfo, outerMostEnclosingType.getClassFile());
-		}
-	}
-	return buffer;
 }
 /** Loads the buffer via SourceMapper, and maps it in SourceMapper */
 private IBuffer mapSource(SourceMapper mapper, IBinaryType info, IClassFile bufferOwner) {
@@ -746,155 +786,114 @@ private IBuffer mapSource(SourceMapper mapper, IBinaryType info, IClassFile buff
 		return buffer;
 	}
 }
-/* package */ static String simpleName(char[] className) {
-	if (className == null)
-		return null;
-	String simpleName = new String(unqualifiedName(className));
-	int lastDollar = simpleName.lastIndexOf('$');
-	if (lastDollar != -1)
-		return Util.localTypeName(simpleName, lastDollar, simpleName.length());
-	else
-		return simpleName;
-}
-
-/** Returns the type of the top-level declaring class used to find the source code */
-private IType getOuterMostEnclosingType() {
-	IType type = getType();
-	IType enclosingType = type.getDeclaringType();
-	while (enclosingType != null) {
-		type = enclosingType;
-		enclosingType = type.getDeclaringType();
-	}
-	return type;
-}
 
 /**
- * Returns the Java Model representation of the given name
- * which is provided in diet class file format, or <code>null</code>
- * if the given name is <code>null</code>.
+ * Opens and returns buffer on the source code associated with this class file.
+ * Maps the source code to the children elements of this class file.
+ * If no source code is associated with this class file,
+ * <code>null</code> is returned.
  *
- * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
- * and corresponding Java Model format is "java.lang.Object".
+ * @see Openable
  */
-
-public static char[] translatedName(char[] name) {
-	if (name == null)
-		return null;
-	int nameLength = name.length;
-	char[] newName= new char[nameLength];
-	for (int i= 0; i < nameLength; i++) {
-		if (name[i] == '/') {
-			newName[i]= '.';
-		} else {
-			newName[i]= name[i];
+protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelException {
+	// Check the cache for the top-level type first
+	IType outerMostEnclosingType = getOuterMostEnclosingType();
+	IBuffer buffer = getBufferManager().getBuffer(outerMostEnclosingType.getClassFile());
+	if (buffer == null) {
+		SourceMapper mapper = getSourceMapper();
+		IBinaryType typeInfo = info instanceof IBinaryType ? (IBinaryType) info : null;
+		if (mapper != null) {
+			buffer = mapSource(mapper, typeInfo, outerMostEnclosingType.getClassFile());
 		}
 	}
-	return newName;
+	return buffer;
 }
-/**
- * Returns the Java Model representation of the given names
- * which are provided in diet class file format, or <code>null</code>
- * if the given names are <code>null</code>.
- *
- * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
- * and corresponding Java Model format is "java.lang.Object".
- */
 
-/* package */ static char[][] translatedNames(char[][] names) {
-	if (names == null)
-		return null;
-	int length = names.length;
-	char[][] newNames = new char[length][];
-	for(int i = 0; i < length; i++) {
-		newNames[i] = translatedName(names[i]);
+@Override
+public void remove_(IContext context) {
+	if (this.externalAnnotationBase != null) {
+		String entryName = Util.concatWith(((PackageFragment) getParent()).names, this.name, '/');
+		ExternalAnnotationTracker.unregisterClassFile(this.externalAnnotationBase, new Path(entryName));
 	}
-	return newNames;
+	super.remove_(context);
 }
-/**
- * Returns the Java Model format of the unqualified class name for the
- * given className which is provided in diet class file format,
- * or <code>null</code> if the given className is <code>null</code>.
- * (This removes the package name, but not enclosing type names).
- *
- * <p><code>ClassFileReader</code> format is similar to "java/lang/Object",
- * and corresponding Java Model simple name format is "Object".
+/*
+ * @see IJavaElement
  */
-
-/* package */ static char[] unqualifiedName(char[] className) {
-	if (className == null)
-		return null;
-	int count = 0;
-	for (int i = className.length - 1; i > -1; i--) {
-		if (className[i] == '/') {
-			char[] name = new char[count];
-			System.arraycopy(className, i + 1, name, 0, count);
-			return name;
+public IResource resource(PackageFragmentRoot root) {
+	return ((IContainer) ((Openable) this.parent).resource(root)).getFile(new Path(getElementName()));
+}
+private void setupExternalAnnotationProvider(IProject project, final IPath externalAnnotationPath,
+		ZipFile annotationZip, ClassFileReader reader, final String typeName)
+{
+	// try resolve path within the workspace:
+	IWorkspaceRoot root = project.getWorkspace().getRoot();
+	IResource resource;
+	if (externalAnnotationPath.segmentCount() == 1) {
+		resource = root.getProject(externalAnnotationPath.lastSegment());
+	} else {
+		resource = root.getFolder(externalAnnotationPath);
+		if (!resource.exists())
+			resource = root.getFile(externalAnnotationPath);
+	}
+	String resolvedPath;
+	if (resource.exists()) {
+		if (resource.isVirtual()) {
+			Util.log(new Status(IStatus.ERROR, JavaCore.PLUGIN_ID, 
+					"Virtual resource "+externalAnnotationPath+" cannot be used as annotationpath for project "+project.getName())); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
 		}
-		count++;
+		resolvedPath = resource.getLocation().toString(); // workspace lookup succeeded -> resolve it
+	} else {
+		resolvedPath = externalAnnotationPath.toString(); // not in workspace, use as is
 	}
-	return className;
-}
-
-/**
- * @see ICodeAssist#codeComplete(int, ICodeCompletionRequestor)
- * @deprecated - should use codeComplete(int, ICompletionRequestor) instead
- */
-public void codeComplete(int offset, final org.eclipse.jdt.core.ICodeCompletionRequestor requestor) throws JavaModelException {
-
-	if (requestor == null){
-		codeComplete(offset, (ICompletionRequestor)null);
+	try {
+		annotationZip = reader.setExternalAnnotationProvider(resolvedPath, typeName, annotationZip, new ClassFileReader.ZipFileProducer() {
+			@Override public ZipFile produce() throws IOException {
+				try {
+					return getJavaModelManager().getZipFile(externalAnnotationPath); // use (absolute, but) unresolved path here
+				} catch (CoreException e) {
+					throw new IOException("Failed to read annotation file for "+typeName+" from "+externalAnnotationPath.toString(), e); //$NON-NLS-1$ //$NON-NLS-2$
+				}
+			}});
+	} catch (IOException e) {
+		Util.log(e);
 		return;
 	}
-	codeComplete(
-		offset,
-		new ICompletionRequestor(){
-			public void acceptAnonymousType(char[] superTypePackageName,char[] superTypeName, char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance) {
-				// ignore
-			}
-			public void acceptClass(char[] packageName, char[] className, char[] completionName, int modifiers, int completionStart, int completionEnd, int relevance) {
-				requestor.acceptClass(packageName, className, completionName, modifiers, completionStart, completionEnd);
-			}
-			public void acceptError(IProblem error) {
-				// was disabled in 1.0
-			}
-			public void acceptField(char[] declaringTypePackageName, char[] declaringTypeName, char[] fieldName, char[] typePackageName, char[] typeName, char[] completionName, int modifiers, int completionStart, int completionEnd, int relevance) {
-				requestor.acceptField(declaringTypePackageName, declaringTypeName, fieldName, typePackageName, typeName, completionName, modifiers, completionStart, completionEnd);
-			}
-			public void acceptInterface(char[] packageName,char[] interfaceName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance) {
-				requestor.acceptInterface(packageName, interfaceName, completionName, modifiers, completionStart, completionEnd);
-			}
-			public void acceptKeyword(char[] keywordName,int completionStart,int completionEnd, int relevance){
-				requestor.acceptKeyword(keywordName, completionStart, completionEnd);
-			}
-			public void acceptLabel(char[] labelName,int completionStart,int completionEnd, int relevance){
-				requestor.acceptLabel(labelName, completionStart, completionEnd);
-			}
-			public void acceptLocalVariable(char[] localVarName,char[] typePackageName,char[] typeName,int modifiers,int completionStart,int completionEnd, int relevance){
-				// ignore
-			}
-			public void acceptMethod(char[] declaringTypePackageName,char[] declaringTypeName,char[] selector,char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] returnTypePackageName,char[] returnTypeName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance){
-				// skip parameter names
-				requestor.acceptMethod(declaringTypePackageName, declaringTypeName, selector, parameterPackageNames, parameterTypeNames, returnTypePackageName, returnTypeName, completionName, modifiers, completionStart, completionEnd);
-			}
-			public void acceptMethodDeclaration(char[] declaringTypePackageName,char[] declaringTypeName,char[] selector,char[][] parameterPackageNames,char[][] parameterTypeNames,char[][] parameterNames,char[] returnTypePackageName,char[] returnTypeName,char[] completionName,int modifiers,int completionStart,int completionEnd, int relevance){
-				// ignore
-			}
-			public void acceptModifier(char[] modifierName,int completionStart,int completionEnd, int relevance){
-				requestor.acceptModifier(modifierName, completionStart, completionEnd);
-			}
-			public void acceptPackage(char[] packageName,char[] completionName,int completionStart,int completionEnd, int relevance){
-				requestor.acceptPackage(packageName, completionName, completionStart, completionEnd);
-			}
-			public void acceptType(char[] packageName,char[] typeName,char[] completionName,int completionStart,int completionEnd, int relevance){
-				requestor.acceptType(packageName, typeName, completionName, completionStart, completionEnd);
-			}
-			public void acceptVariableName(char[] typePackageName,char[] typeName,char[] varName,char[] completionName,int completionStart,int completionEnd, int relevance){
-				// ignore
-			}
-		});
+	if (annotationZip == null) {
+		// Additional change listening for individual types only when annotations are in individual files.
+		// Note that we also listen for classes that don't yet have an annotation file, to detect its creation
+		this.externalAnnotationBase = externalAnnotationPath; // remember so we can unregister later
+		ExternalAnnotationTracker.registerClassFile(externalAnnotationPath, new Path(typeName), this);
+	}
 }
 
-public ISourceRange getNameRange() {
-	return null;
+private IStatus validateClassFile() {
+	IPackageFragmentRoot root = getPackageFragmentRoot();
+	try {
+		if (root.getKind() != IPackageFragmentRoot.K_BINARY)
+			return new JavaModelStatus(IJavaModelStatusConstants.INVALID_ELEMENT_TYPES, root);
+	} catch (JavaModelException e) {
+		return e.getJavaModelStatus();
+	}
+	IJavaProject project = getJavaProject();
+	return JavaConventions.validateClassFileName(getElementName(), project.getOption(JavaCore.COMPILER_SOURCE, true), project.getOption(JavaCore.COMPILER_COMPLIANCE, true));
+}
+
+@Override
+public void validateExistence_(IContext context) throws CoreException {
+	// check whether the class file can be opened
+	IStatus status = validateClassFile();
+	if (!status.isOK())
+		throw newJavaModelException(status);
+	IResource underlyingResource = resource();
+	if (underlyingResource != null) {
+		if (!underlyingResource.isAccessible())
+			throw newDoesNotExistException_();
+		PackageFragmentRoot root;
+		if ((underlyingResource instanceof IFolder) && (root = getPackageFragmentRoot()).isArchive()) { // see https://bugs.eclipse.org/bugs/show_bug.cgi?id=204652
+			throw root.newDoesNotExistException_();
+		}
+	}
 }
 }

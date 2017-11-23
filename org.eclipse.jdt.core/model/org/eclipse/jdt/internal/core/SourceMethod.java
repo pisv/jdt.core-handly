@@ -41,6 +41,10 @@ protected SourceMethod(JavaElement parent, String name, String[] parameterTypes)
 		this.parameterTypes= parameterTypes;
 	}
 }
+@Override
+public boolean canEqual_(Object obj) {
+	return obj instanceof SourceMethod;
+}
 public boolean equals(Object o) {
 	if (!(o instanceof SourceMethod)) return false;
 	return super.equals(o) && Util.equalArraysOrNull(this.parameterTypes, ((SourceMethod)o).parameterTypes);
@@ -114,26 +118,54 @@ public String[] getParameterNames() throws JavaModelException {
 	char[][] names= info.getArgumentNames();
 	return CharOperation.toStrings(names);
 }
+public ILocalVariable[] getParameters() throws JavaModelException {
+	ILocalVariable[] arguments = ((SourceMethodElementInfo) getElementInfo()).arguments;
+	if (arguments == null)
+		return LocalVariable.NO_LOCAL_VARIABLES;
+	return arguments;
+}
 /**
  * @see IMethod
  */
 public String[] getParameterTypes() {
 	return this.parameterTypes;
 }
+/*
+ * @see JavaElement#getPrimaryElement(boolean)
+ */
+public IJavaElement getPrimaryElement(boolean checkOwner) {
+	if (checkOwner) {
+		CompilationUnit cu = (CompilationUnit)getAncestor(COMPILATION_UNIT);
+		if (cu.isPrimary()) return this;
+	}
+	IJavaElement primaryParent = this.parent.getPrimaryElement(false);
+	return ((IType)primaryParent).getMethod(this.name, this.parameterTypes);
+}
+public String[] getRawParameterNames() throws JavaModelException {
+	return getParameterNames();
+}
+/**
+ * @see IMethod
+ */
+public String getReturnType() throws JavaModelException {
+	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
+	return Signature.createTypeSignature(info.getReturnTypeName(), false);
+}
+
+/**
+ * @see IMethod
+ */
+public String getSignature() throws JavaModelException {
+	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
+	return Signature.createMethodSignature(this.parameterTypes, Signature.createTypeSignature(info.getReturnTypeName(), false));
+}
 
 public ITypeParameter getTypeParameter(String typeParameterName) {
 	return new TypeParameter(this, typeParameterName);
 }
-
 public ITypeParameter[] getTypeParameters() throws JavaModelException {
 	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
 	return info.typeParameters;
-}
-public ILocalVariable[] getParameters() throws JavaModelException {
-	ILocalVariable[] arguments = ((SourceMethodElementInfo) getElementInfo()).arguments;
-	if (arguments == null)
-		return LocalVariable.NO_LOCAL_VARIABLES;
-	return arguments;
 }
 /**
  * @see IMethod#getTypeParameterSignatures()
@@ -162,34 +194,6 @@ public String[] getTypeParameterSignatures() throws JavaModelException {
 	return typeParameterSignatures;
 }
 
-/*
- * @see JavaElement#getPrimaryElement(boolean)
- */
-public IJavaElement getPrimaryElement(boolean checkOwner) {
-	if (checkOwner) {
-		CompilationUnit cu = (CompilationUnit)getAncestor(COMPILATION_UNIT);
-		if (cu.isPrimary()) return this;
-	}
-	IJavaElement primaryParent = this.parent.getPrimaryElement(false);
-	return ((IType)primaryParent).getMethod(this.name, this.parameterTypes);
-}
-public String[] getRawParameterNames() throws JavaModelException {
-	return getParameterNames();
-}
-/**
- * @see IMethod
- */
-public String getReturnType() throws JavaModelException {
-	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
-	return Signature.createTypeSignature(info.getReturnTypeName(), false);
-}
-/**
- * @see IMethod
- */
-public String getSignature() throws JavaModelException {
-	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
-	return Signature.createMethodSignature(this.parameterTypes, Signature.createTypeSignature(info.getReturnTypeName(), false));
-}
 /**
  * @see org.eclipse.jdt.internal.core.JavaElement#hashCode()
  */
@@ -200,26 +204,84 @@ public int hashCode() {
 	}
 	return hash;
 }
-@Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof SourceMethod;
+/**
+ * @see IMethod
+ */
+public boolean isConstructor() throws JavaModelException {
+	if (!getElementName().equals(this.parent.getElementName())) {
+		// faster than reaching the info
+		return false;
+	}
+	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
+	return info.isConstructor();
+}
+/**
+ * @see IMethod#isLambdaMethod()
+ */
+public boolean isLambdaMethod() {
+	return false;
+}
+/**
+ * @see IMethod#isMainMethod()
+ */
+public boolean isMainMethod() throws JavaModelException {
+	return this.isMainMethod(this);
+}
+/* (non-Javadoc)
+ * @see org.eclipse.jdt.core.IMethod#isResolved()
+ */
+public boolean isResolved() {
+	return false;
+}
+/**
+ * @see IMethod#isSimilar(IMethod)
+ */
+public boolean isSimilar(IMethod method) {
+	return
+		areSimilarMethods(
+			getElementName(), getParameterTypes(),
+			method.getElementName(), method.getParameterTypes(),
+			null);
+}
+/**
+ */
+public String readableName() {
+
+	StringBuffer buffer = new StringBuffer(super.readableName());
+	buffer.append('(');
+	int length;
+	if (this.parameterTypes != null && (length = this.parameterTypes.length) > 0) {
+		for (int i = 0; i < length; i++) {
+			buffer.append(Signature.toString(this.parameterTypes[i]));
+			if (i < length - 1) {
+				buffer.append(", "); //$NON-NLS-1$
+			}
+		}
+	}
+	buffer.append(')');
+	return buffer.toString();
 }
 @Override
-public void hRemoving(Object body) {
+public void removing_(Object body) {
 	SourceMethodElementInfo elementInfo = (SourceMethodElementInfo) body;
 	ITypeParameter[] typeParameters = elementInfo.typeParameters;
 	for (int i = 0, length = typeParameters.length; i < length; i++) {
-		((TypeParameter)typeParameters[i]).hRemove(EMPTY_CONTEXT);
+		((TypeParameter)typeParameters[i]).remove_(EMPTY_CONTEXT);
 	}
-	super.hRemoving(body);
+	super.removing_(body);
+}
+public JavaElement resolved(Binding binding) {
+	SourceRefElement resolvedHandle = new ResolvedSourceMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
+	resolvedHandle.occurrenceCount = this.occurrenceCount;
+	return resolvedHandle;
 }
 @Override
-public void hToStringBody(StringBuilder builder, Object info, IContext context) {
+public void toStringBody_(StringBuilder builder, Object info, IContext context) {
 	if (info == null) {
-		hToStringName(builder, context);
+		toStringName_(builder, context);
 		builder.append(" (not open)"); //$NON-NLS-1$
 	} else if (info == NO_BODY) {
-		hToStringName(builder, context);
+		toStringName_(builder, context);
 	} else {
 		SourceMethodElementInfo methodInfo = (SourceMethodElementInfo) info;
 		int flags = methodInfo.getModifiers();
@@ -233,10 +295,7 @@ public void hToStringBody(StringBuilder builder, Object info, IContext context) 
 		toStringName(builder, flags);
 	}
 }
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	toStringName(builder, 0);
-}
+
 private void toStringName(StringBuilder builder, int flags) {
 	builder.append(getElementName());
 	builder.append('(');
@@ -270,67 +329,8 @@ private void toStringName(StringBuilder builder, int flags) {
 		builder.append(this.occurrenceCount);
 	}
 }
-/**
- * @see IMethod
- */
-public boolean isConstructor() throws JavaModelException {
-	if (!getElementName().equals(this.parent.getElementName())) {
-		// faster than reaching the info
-		return false;
-	}
-	SourceMethodElementInfo info = (SourceMethodElementInfo) getElementInfo();
-	return info.isConstructor();
-}
-/**
- * @see IMethod#isMainMethod()
- */
-public boolean isMainMethod() throws JavaModelException {
-	return this.isMainMethod(this);
-}
-/**
- * @see IMethod#isLambdaMethod()
- */
-public boolean isLambdaMethod() {
-	return false;
-}
-/* (non-Javadoc)
- * @see org.eclipse.jdt.core.IMethod#isResolved()
- */
-public boolean isResolved() {
-	return false;
-}
-/**
- * @see IMethod#isSimilar(IMethod)
- */
-public boolean isSimilar(IMethod method) {
-	return
-		areSimilarMethods(
-			getElementName(), getParameterTypes(),
-			method.getElementName(), method.getParameterTypes(),
-			null);
-}
-
-/**
- */
-public String readableName() {
-
-	StringBuffer buffer = new StringBuffer(super.readableName());
-	buffer.append('(');
-	int length;
-	if (this.parameterTypes != null && (length = this.parameterTypes.length) > 0) {
-		for (int i = 0; i < length; i++) {
-			buffer.append(Signature.toString(this.parameterTypes[i]));
-			if (i < length - 1) {
-				buffer.append(", "); //$NON-NLS-1$
-			}
-		}
-	}
-	buffer.append(')');
-	return buffer.toString();
-}
-public JavaElement resolved(Binding binding) {
-	SourceRefElement resolvedHandle = new ResolvedSourceMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
-	resolvedHandle.occurrenceCount = this.occurrenceCount;
-	return resolvedHandle;
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	toStringName(builder, 0);
 }
 }

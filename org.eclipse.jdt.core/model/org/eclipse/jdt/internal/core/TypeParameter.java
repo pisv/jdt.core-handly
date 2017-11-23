@@ -31,7 +31,7 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 		TypeParameterElementInfo info = (TypeParameterElementInfo) getElementInfo();
 		return CharOperation.toStrings(info.bounds);
 	}
-	
+
 	public String[] getBoundsSignatures() throws JavaModelException {
 		
 		String[] boundSignatures = null;
@@ -58,6 +58,10 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 			boundSignatures[i] = new String(Signature.createCharArrayTypeSignature(bounds[i], false));
 		}
 		return boundSignatures;
+	}
+	
+	public IClassFile getClassFile() {
+		return ((JavaElement)getParent()).getClassFile();
 	}
 	
 	public IMember getDeclaringMember() {
@@ -125,10 +129,6 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 		return super.getSourceRange();
 	}
 
-	public IClassFile getClassFile() {
-		return ((JavaElement)getParent()).getClassFile();
-	}
-	
 	/**
 	 * {@inheritDoc}
 	 * @since 3.7
@@ -136,9 +136,9 @@ public class TypeParameter extends SourceRefElement implements ITypeParameter {
 	public ITypeRoot getTypeRoot() {
 		return this.getDeclaringMember().getTypeRoot();
 	}
-
+	
 	@Override
-	public void hToStringName(StringBuilder builder, IContext context) {
+	public void toStringName_(StringBuilder builder, IContext context) {
 		builder.append('<');
 		builder.append(getElementName());
 		builder.append('>');

@@ -54,11 +54,40 @@ protected void getHandleMemento(StringBuffer buff) {
 protected char getHandleMementoDelimiter() {
 	return JavaElement.JEM_INITIALIZER;
 }
+/**
+ * @see IMember
+ */
+public ISourceRange getNameRange() {
+	return null;
+}
+/*
+ * @see JavaElement#getPrimaryElement(boolean)
+ */
+public IJavaElement getPrimaryElement(boolean checkOwner) {
+	if (checkOwner) {
+		CompilationUnit cu = (CompilationUnit)getAncestor(COMPILATION_UNIT);
+		if (cu == null || cu.isPrimary()) return this;
+	}
+	IJavaElement primaryParent = this.parent.getPrimaryElement(false);
+	return ((IType)primaryParent).getInitializer(this.occurrenceCount);
+}
 public int hashCode() {
 	return Util.combineHashCodes(this.parent.hashCode(), this.occurrenceCount);
 }
+/**
+ */
+public String readableName() {
+
+	return ((JavaElement)getDeclaringType()).readableName();
+}
+/**
+ * @see ISourceManipulation
+ */
+public void rename(String newName, boolean force, IProgressMonitor monitor) throws JavaModelException {
+	throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.INVALID_ELEMENT_TYPES, this));
+}
 @Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+public void toStringBody_(StringBuilder builder, Object body, IContext context) {
 	if (body == null) {
 		builder.append("<initializer #"); //$NON-NLS-1$
 		builder.append(this.occurrenceCount);
@@ -80,34 +109,5 @@ public void hToStringBody(StringBuilder builder, Object body, IContext context) 
 			builder.append("<JavaModelException in toString of " + getElementName()); //$NON-NLS-1$
 		}
 	}
-}
-/**
- */
-public String readableName() {
-
-	return ((JavaElement)getDeclaringType()).readableName();
-}
-/**
- * @see ISourceManipulation
- */
-public void rename(String newName, boolean force, IProgressMonitor monitor) throws JavaModelException {
-	throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.INVALID_ELEMENT_TYPES, this));
-}
-/**
- * @see IMember
- */
-public ISourceRange getNameRange() {
-	return null;
-}
-/*
- * @see JavaElement#getPrimaryElement(boolean)
- */
-public IJavaElement getPrimaryElement(boolean checkOwner) {
-	if (checkOwner) {
-		CompilationUnit cu = (CompilationUnit)getAncestor(COMPILATION_UNIT);
-		if (cu == null || cu.isPrimary()) return this;
-	}
-	IJavaElement primaryParent = this.parent.getPrimaryElement(false);
-	return ((IType)primaryParent).getInitializer(this.occurrenceCount);
 }
 }

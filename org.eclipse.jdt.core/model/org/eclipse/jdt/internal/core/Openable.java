@@ -49,10 +49,10 @@ protected Openable(JavaElement parent) {
  */
 public void bufferChanged(BufferChangedEvent event) {
 	if (event.getBuffer().isClosed()) {
-		hModelManager().getElementsOutOfSynchWithBuffers().remove(this);
+		getJavaModelManager().getElementsOutOfSynchWithBuffers().remove(this);
 		getBufferManager().removeBuffer(event.getBuffer());
 	} else {
-		hModelManager().getElementsOutOfSynchWithBuffers().add(this);
+		getJavaModelManager().getElementsOutOfSynchWithBuffers().add(this);
 	}
 }
 /*
@@ -70,6 +70,13 @@ public boolean canBeRemovedFromCache() {
  */
 public boolean canBufferBeRemovedFromCache(IBuffer buffer) {
 	return !buffer.hasUnsavedChanges();
+}
+@Override
+public void close_(IContext context) {
+	CloseHint hint = context.get(CLOSE_HINT);
+	if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
+		return;
+	super.close_(context);
 }
 /**
  * Close the buffer associated with this element, if any.
@@ -156,6 +163,33 @@ protected IJavaElement[] codeSelect(org.eclipse.jdt.internal.compiler.env.ICompi
 	}
 	return requestor.getElements();
 }
+@Override
+public boolean exists_() {
+	if (findBody_() != null)
+		return true;
+	switch (getElementType()) {
+		case IJavaElement.PACKAGE_FRAGMENT:
+			PackageFragmentRoot root = getPackageFragmentRoot();
+			if (root.isArchive()) {
+				// pkg in a jar -> need to open root to know if this pkg exists
+				JarPackageFragmentRootInfo rootInfo;
+				try {
+					rootInfo = (JarPackageFragmentRootInfo) root.getElementInfo();
+				} catch (JavaModelException e) {
+					return false;
+				}
+				return rootInfo.rawPackageInfo.containsKey(((PackageFragment) this).names);
+			}
+			break;
+		case IJavaElement.CLASS_FILE:
+			if (getPackageFragmentRoot().isArchive()) {
+				// class file in a jar -> need to open this class file to know if it exists
+				return super.exists_();
+			}
+			break;
+	}
+	return super.exists_();
+}
 public String findRecommendedLineSeparator() throws JavaModelException {
 	IBuffer buffer = getBuffer();
 	String source = buffer == null ? null : buffer.getContents();
@@ -194,7 +228,6 @@ public IBuffer getBuffer() throws JavaModelException {
 public IBufferFactory getBufferFactory(){
 	return getBufferManager().getDefaultBufferFactory();
 }
-
 /**
  * Returns the buffer manager for this element.
  */
@@ -210,11 +243,28 @@ protected BufferManager getBufferManager() {
 public IResource getCorrespondingResource() throws JavaModelException {
 	return getUnderlyingResource();
 }
+
 /*
  * @see IJavaElement
  */
 public IOpenable getOpenable() {
 	return this;
+}
+/**
+ * Find enclosing package fragment root if any
+ */
+public PackageFragmentRoot getPackageFragmentRoot() {
+	return (PackageFragmentRoot) getAncestor(IJavaElement.PACKAGE_FRAGMENT_ROOT);
+}
+public IResource getResource() {
+	PackageFragmentRoot root = getPackageFragmentRoot();
+	if (root != null) {
+		if (root.isExternal())
+			return null;
+		if (root.isArchive())
+			return root.resource(root);
+	}
+	return resource(root);
 }
 
 
@@ -281,80 +331,6 @@ public boolean hasUnsavedChanges() throws JavaModelException{
 
 	return false;
 }
-@Override
-public void hClose(IContext context) {
-	CloseHint hint = context.get(CLOSE_HINT);
-	if (hint == CloseHint.CACHE_OVERFLOW && !canBeRemovedFromCache())
-		return;
-	super.hClose(context);
-}
-@Override
-public boolean hExists() {
-	if (hFindBody() != null)
-		return true;
-	switch (getElementType()) {
-		case IJavaElement.PACKAGE_FRAGMENT:
-			PackageFragmentRoot root = getPackageFragmentRoot();
-			if (root.isArchive()) {
-				// pkg in a jar -> need to open root to know if this pkg exists
-				JarPackageFragmentRootInfo rootInfo;
-				try {
-					rootInfo = (JarPackageFragmentRootInfo) root.getElementInfo();
-				} catch (JavaModelException e) {
-					return false;
-				}
-				return rootInfo.rawPackageInfo.containsKey(((PackageFragment) this).names);
-			}
-			break;
-		case IJavaElement.CLASS_FILE:
-			if (getPackageFragmentRoot().isArchive()) {
-				// class file in a jar -> need to open this class file to know if it exists
-				return super.hExists();
-			}
-			break;
-	}
-	return super.hExists();
-}
-@Override
-public void hGenerateBodies(IContext context, IProgressMonitor monitor) throws CoreException {
-	if (JavaModelCache.VERBOSE){
-		String element;
-		switch (getElementType()) {
-			case JAVA_PROJECT:
-				element = "project"; //$NON-NLS-1$
-				break;
-			case PACKAGE_FRAGMENT_ROOT:
-				element = "root"; //$NON-NLS-1$
-				break;
-			case PACKAGE_FRAGMENT:
-				element = "package"; //$NON-NLS-1$
-				break;
-			case CLASS_FILE:
-				element = "class file"; //$NON-NLS-1$
-				break;
-			case COMPILATION_UNIT:
-				element = "compilation unit"; //$NON-NLS-1$
-				break;
-			default:
-				element = "element"; //$NON-NLS-1$
-		}
-		System.out.println(Thread.currentThread() +" OPENING " + element + " " + this.toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
-	}
-
-	super.hGenerateBodies(context, monitor);
-
-	// remove out of sync buffer for this element
-	hModelManager().getElementsOutOfSynchWithBuffers().remove(this);
-
-	if (JavaModelCache.VERBOSE) {
-		System.out.println(hModelManager().cacheToString("-> ")); //$NON-NLS-1$
-	}
-}
-@Override
-public void hRemoving(Object body) {
-	closeBuffer();
-	super.hRemoving(body);
-}
 /**
  * Subclasses must override as required.
  *
@@ -368,7 +344,7 @@ public boolean isConsistent() {
  * @see IOpenable
  */
 public boolean isOpen() {
-	return hFindBody() != null;
+	return findBody_() != null;
 }
 /**
  * Returns true if this represents a source element.
@@ -398,6 +374,44 @@ public void open(IProgressMonitor pm) throws JavaModelException {
 	getElementInfo(pm);
 }
 
+@Override
+public Object open_(IContext context, IProgressMonitor monitor) throws CoreException {
+	if (JavaModelCache.VERBOSE){
+		String element;
+		switch (getElementType()) {
+			case JAVA_PROJECT:
+				element = "project"; //$NON-NLS-1$
+				break;
+			case PACKAGE_FRAGMENT_ROOT:
+				element = "root"; //$NON-NLS-1$
+				break;
+			case PACKAGE_FRAGMENT:
+				element = "package"; //$NON-NLS-1$
+				break;
+			case CLASS_FILE:
+				element = "class file"; //$NON-NLS-1$
+				break;
+			case COMPILATION_UNIT:
+				element = "compilation unit"; //$NON-NLS-1$
+				break;
+			default:
+				element = "element"; //$NON-NLS-1$
+		}
+		System.out.println(Thread.currentThread() +" OPENING " + element + " " + this.toStringWithAncestors()); //$NON-NLS-1$//$NON-NLS-2$
+	}
+
+	Object body = super.open_(context, monitor);
+
+	// remove out of sync buffer for this element
+	getJavaModelManager().getElementsOutOfSynchWithBuffers().remove(this);
+
+	if (JavaModelCache.VERBOSE) {
+		System.out.println(getJavaModelManager().cacheToString("-> ")); //$NON-NLS-1$
+	}
+
+	return body;
+}
+
 /**
  * Opens a buffer on the contents of this element, and returns
  * the buffer, or returns <code>null</code> if opening fails.
@@ -408,15 +422,10 @@ protected IBuffer openBuffer(IProgressMonitor pm, Object info) throws JavaModelE
 	return null;
 }
 
-public IResource getResource() {
-	PackageFragmentRoot root = getPackageFragmentRoot();
-	if (root != null) {
-		if (root.isExternal())
-			return null;
-		if (root.isArchive())
-			return root.resource(root);
-	}
-	return resource(root);
+@Override
+public void removing_(Object body) {
+	closeBuffer();
+	super.removing_(body);
 }
 
 public IResource resource() {
@@ -447,13 +456,6 @@ public void save(IProgressMonitor pm, boolean force) throws JavaModelException {
 		buf.save(pm, force);
 		makeConsistent(pm); // update the element info of this element
 	}
-}
-
-/**
- * Find enclosing package fragment root if any
- */
-public PackageFragmentRoot getPackageFragmentRoot() {
-	return (PackageFragmentRoot) getAncestor(IJavaElement.PACKAGE_FRAGMENT_ROOT);
 }
 
 }

@@ -10,7 +10,7 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core;
 
-import org.eclipse.handly.model.impl.ElementManager;
+import org.eclipse.handly.model.impl.support.ElementManager;
 import org.eclipse.jdt.core.IJavaElement;
 
 public class JavaElementManager extends ElementManager {

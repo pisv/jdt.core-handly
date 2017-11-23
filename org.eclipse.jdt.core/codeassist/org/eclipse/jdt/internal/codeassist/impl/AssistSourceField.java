@@ -37,6 +37,15 @@ public class AssistSourceField extends ResolvedSourceField {
 		this.infoCache = infoCache;
 	}
 
+	@Override
+	public Object findBody_() {
+		return this.infoCache.get(this);
+	}
+
+	public IAnnotation getAnnotation(String annotationName) {
+		return new AssistAnnotation(this, annotationName, this.infoCache);
+	}
+
 	/* (non-Javadoc)
 	 * @see org.eclipse.jdt.internal.core.SourceField#getKey()
 	 */
@@ -59,14 +68,10 @@ public class AssistSourceField extends ResolvedSourceField {
 		return this.uniqueKey;
 	}
 
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
+	public IType getType(String typeName, int count) {
+		AssistSourceType type = new AssistSourceType(this, typeName, this.bindingCache, this.infoCache);
+		type.occurrenceCount = count;
+		return type;
 	}
 
 	public boolean isResolved() {
@@ -74,13 +79,8 @@ public class AssistSourceField extends ResolvedSourceField {
 		return this.isResolved;
 	}
 
-	public IAnnotation getAnnotation(String annotationName) {
-		return new AssistAnnotation(this, annotationName, this.infoCache);
-	}
-
-	public IType getType(String typeName, int count) {
-		AssistSourceType type = new AssistSourceType(this, typeName, this.bindingCache, this.infoCache);
-		type.occurrenceCount = count;
-		return type;
+	@Override
+	public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+		super.toStringBody_(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
 	}
 }

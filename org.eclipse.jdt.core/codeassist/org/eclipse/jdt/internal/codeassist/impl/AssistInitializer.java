@@ -26,14 +26,14 @@ public class AssistInitializer extends Initializer {
 		this.infoCache = infoCache;
 	}
 
+	@Override
+	public Object findBody_() {
+		return this.infoCache.get(this);
+	}
+
 	public IType getType(String typeName, int count) {
 		AssistSourceType type = new AssistSourceType(this, typeName, this.bindingCache, this.infoCache);
 		type.occurrenceCount = count;
 		return type;
-	}
-
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
 	}
 }

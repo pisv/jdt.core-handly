@@ -41,11 +41,28 @@ public class AssistSourceType extends ResolvedSourceType {
 		this.infoCache = infoCache;
 	}
 
+	@Override
+	public Object findBody_() {
+		return this.infoCache.get(this);
+	}
+
+	public IAnnotation getAnnotation(String annotationName) {
+		return new AssistAnnotation(this, annotationName, this.infoCache);
+	}
+
+	public IField getField(String fieldName) {
+		return new AssistSourceField(this, fieldName, this.bindingCache, this.infoCache);
+	}
+
 	public String getFullyQualifiedParameterizedName() throws JavaModelException {
 		if (isResolved()) {
 			return getFullyQualifiedParameterizedName(getFullyQualifiedName('.'), this.getKey());
 		}
 		return getFullyQualifiedName('.', true/*show parameters*/);
+	}
+
+	public IInitializer getInitializer(int count) {
+		return new AssistInitializer(this, count, this.bindingCache, this.infoCache);
 	}
 
 	/* (non-Javadoc)
@@ -70,33 +87,6 @@ public class AssistSourceType extends ResolvedSourceType {
 		return this.uniqueKey;
 	}
 
-	@Override
-	public Object hFindBody() {
-		return this.infoCache.get(this);
-	}
-
-	@Override
-	public void hToStringBody(StringBuilder builder, Object body, IContext context) {
-		super.hToStringBody(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
-	}
-
-	public boolean isResolved() {
-		getKey();
-		return this.isResolved;
-	}
-
-	public IAnnotation getAnnotation(String annotationName) {
-		return new AssistAnnotation(this, annotationName, this.infoCache);
-	}
-
-	public IField getField(String fieldName) {
-		return new AssistSourceField(this, fieldName, this.bindingCache, this.infoCache);
-	}
-
-	public IInitializer getInitializer(int count) {
-		return new AssistInitializer(this, count, this.bindingCache, this.infoCache);
-	}
-
 	public IMethod getMethod(String selector, String[] parameterTypeSignatures) {
 		return new AssistSourceMethod(this, selector, parameterTypeSignatures, this.bindingCache, this.infoCache);
 	}
@@ -113,5 +103,15 @@ public class AssistSourceType extends ResolvedSourceType {
 
 	public ITypeParameter getTypeParameter(String typeParameterName) {
 		return new AssistTypeParameter(this, typeParameterName, this.infoCache);
+	}
+
+	public boolean isResolved() {
+		getKey();
+		return this.isResolved;
+	}
+
+	@Override
+	public void toStringBody_(StringBuilder builder, Object body, IContext context) {
+		super.toStringBody_(builder, body, with(of(SHOW_RESOLVED_INFO, context.getOrDefault(SHOW_RESOLVED_INFO) && isResolved()), context));
 	}
 }

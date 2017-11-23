@@ -50,12 +50,18 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 		this.externalPath = externalPath == null ? linkedFolder.getLocation() : externalPath;
 	}
 
+	@Override
+	public boolean canEqual_(Object obj) {
+		return obj instanceof ExternalPackageFragmentRoot;
+	}
+
 	/**
 	 * An external class folder is always K_BINARY.
 	 */
 	protected int determineKind(IResource underlyingResource) {
 		return IPackageFragmentRoot.K_BINARY;
 	}
+
 	/**
 	 * Returns true if this handle represents the same external folder
 	 * as the given handle.
@@ -80,16 +86,12 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 	public int getKind() {
 		return IPackageFragmentRoot.K_BINARY;
 	}
-	int internalKind() throws JavaModelException {
-		return IPackageFragmentRoot.K_BINARY;
-	}
 	/**
 	 * @see IPackageFragmentRoot
 	 */
 	public IPath getPath() {
 		return this.externalPath;
 	}
-
 	/**
 	 * @see IJavaElement
 	 */
@@ -100,16 +102,9 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 		return this.externalPath.hashCode();
 	}
 
-	@Override
-	public boolean hCanEqual(Object obj) {
-		return obj instanceof ExternalPackageFragmentRoot;
+	int internalKind() throws JavaModelException {
+		return IPackageFragmentRoot.K_BINARY;
 	}
-
-	@Override
-	public void hToStringAncestors(StringBuilder builder, IContext context) {
-		// don't show project as it is irrelevant for external folders.
-	}
-
 	/**
 	 * @see IPackageFragmentRoot
 	 */
@@ -133,5 +128,10 @@ public class ExternalPackageFragmentRoot extends PackageFragmentRoot {
 		if (file == null)
 			return false;
 		return file.exists();
+	}
+
+	@Override
+	public void toStringAncestors_(StringBuilder builder, IContext context) {
+		// don't show project as it is irrelevant for external folders.
 	}
 }

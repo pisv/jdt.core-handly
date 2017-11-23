@@ -65,6 +65,10 @@ protected BinaryMethod(JavaElement parent, String name, String[] paramTypes) {
 		this.parameterTypes= paramTypes;
 	}
 }
+@Override
+public boolean canEqual_(Object obj) {
+	return obj instanceof BinaryMethod;
+}
 public boolean equals(Object o) {
 	if (!(o instanceof BinaryMethod)) return false;
 	return super.equals(o) && Util.equalArraysOrNull(getErasedParameterTypes(), ((BinaryMethod)o).getErasedParameterTypes());
@@ -73,68 +77,6 @@ public IAnnotation[] getAnnotations() throws JavaModelException {
 	IBinaryMethod info = (IBinaryMethod) getElementInfo();
 	IBinaryAnnotation[] binaryAnnotations = info.getAnnotations();
 	return getAnnotations(binaryAnnotations, info.getTagBits());
-}
-public ILocalVariable[] getParameters() throws JavaModelException {
-	IBinaryMethod info = (IBinaryMethod) getElementInfo();
-	int length = this.parameterTypes.length;
-	if (length == 0) {
-		return LocalVariable.NO_LOCAL_VARIABLES;
-	}
-	ILocalVariable[] localVariables = new ILocalVariable[length];
-	char[][] argumentNames = info.getArgumentNames();
-	if (argumentNames == null || argumentNames.length < length) {
-		argumentNames = new char[length][];
-		for (int j = 0; j < length; j++) {
-			argumentNames[j] = ("arg" + j).toCharArray(); //$NON-NLS-1$
-		}
-	}
-	int startIndex = 0;
-	try {
-		if (isConstructor()) {
-			IType declaringType = this.getDeclaringType();
-			if (declaringType.isEnum()) {
-				startIndex = 2;
-			} else if (declaringType.isMember()
-					&& !Flags.isStatic(declaringType.getFlags())) {
-				startIndex = 1;
-			}
-		}
-	} catch(JavaModelException e) {
-		// ignore
-	}
-	for (int i= 0; i < length; i++) {
-		if (i < startIndex) {
-			LocalVariable localVariable = new LocalVariable(
-					this,
-					new String(argumentNames[i]),
-					0,
-					-1,
-					0,
-					-1,
-					this.parameterTypes[i],
-					null,
-					-1,
-					true);
-			localVariables[i] = localVariable;
-			localVariable.annotations = Annotation.NO_ANNOTATIONS;
-		} else {
-			LocalVariable localVariable = new LocalVariable(
-					this,
-					new String(argumentNames[i]),
-					0,
-					-1,
-					0,
-					-1,
-					this.parameterTypes[i],
-					null,
-					-1,
-					true);
-			localVariables[i] = localVariable;
-			IAnnotation[] annotations = getAnnotations(localVariable, info.getParameterAnnotations(i - startIndex, getDeclaringType().getElementName().toCharArray()));
-			localVariable.annotations = annotations;
-		}
-	}
-	return localVariables;
 }
 private IAnnotation[] getAnnotations(JavaElement annotationParent, IBinaryAnnotation[] binaryAnnotations) {
 	if (binaryAnnotations == null) return Annotation.NO_ANNOTATIONS;
@@ -145,6 +87,11 @@ private IAnnotation[] getAnnotations(JavaElement annotationParent, IBinaryAnnota
 	}
 	return annotations;
 }
+public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
+	JavadocContents javadocContents = ((BinaryType) this.getDeclaringType()).getJavadocContents(monitor);
+	if (javadocContents == null) return null;
+	return javadocContents.getMethodDoc(this);
+}
 public IMemberValuePair getDefaultValue() throws JavaModelException {
 	IBinaryMethod info = (IBinaryMethod) getElementInfo();
 	Object defaultValue = info.getDefaultValue();
@@ -153,6 +100,30 @@ public IMemberValuePair getDefaultValue() throws JavaModelException {
 	MemberValuePair memberValuePair = new MemberValuePair(getElementName());
 	memberValuePair.value = Util.getAnnotationMemberValue(this, memberValuePair, defaultValue);
 	return memberValuePair;
+}
+/*
+ * @see IJavaElement
+ */
+public int getElementType() {
+	return METHOD;
+}
+private String getErasedParameterType(int index) {
+	return getErasedParameterTypes()[index];
+}
+// https://bugs.eclipse.org/bugs/show_bug.cgi?id=299384
+private String [] getErasedParameterTypes() {
+	if (this.erasedParamaterTypes == null) {
+		int paramCount = this.parameterTypes.length;
+		String [] erasedTypes = new String [paramCount];
+		boolean erasureNeeded = false;
+		for (int i = 0; i < paramCount; i++) {
+			String parameterType = this.parameterTypes[i];
+			if ((erasedTypes[i] = Signature.getTypeErasure(parameterType)) != parameterType)
+				erasureNeeded = true;
+		}
+		this.erasedParamaterTypes = erasureNeeded ? erasedTypes : this.parameterTypes;
+	}
+	return this.erasedParamaterTypes;
 }
 /*
  * @see IMethod
@@ -185,12 +156,6 @@ public String[] getExceptionTypes() throws JavaModelException {
 		}
 	}
 	return this.exceptionTypes;
-}
-/*
- * @see IJavaElement
- */
-public int getElementType() {
-	return METHOD;
 }
 /*
  * @see IMember
@@ -292,7 +257,7 @@ public String[] getParameterNames() throws JavaModelException {
 		}
 		JavadocContents javadocContents = null;
 		IType declaringType = getDeclaringType();
-		PerProjectInfo projectInfo = hModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
+		PerProjectInfo projectInfo = getJavaModelManager().getPerProjectInfoCheckExistence(getJavaProject().getProject());
 		synchronized (projectInfo.javadocCache) {
 			javadocContents = (JavadocContents) projectInfo.javadocCache.get(declaringType);
 			if (javadocContents == null) {
@@ -317,11 +282,11 @@ public String[] getParameterNames() throws JavaModelException {
 			}
 			final class ParametersNameCollector {
 				String javadoc;
-				public void setJavadoc(String s) {
-					this.javadoc = s;
-				}
 				public String getJavadoc() {
 					return this.javadoc;
+				}
+				public void setJavadoc(String s) {
+					this.javadoc = s;
 				}
 			}
 			/*
@@ -403,6 +368,177 @@ public String[] getParameterNames() throws JavaModelException {
 	// If still no parameter names, produce fake ones, but don't cache them (https://bugs.eclipse.org/bugs/show_bug.cgi?id=329671)
 	return getRawParameterNames(paramCount);
 }
+public ILocalVariable[] getParameters() throws JavaModelException {
+	IBinaryMethod info = (IBinaryMethod) getElementInfo();
+	int length = this.parameterTypes.length;
+	if (length == 0) {
+		return LocalVariable.NO_LOCAL_VARIABLES;
+	}
+	ILocalVariable[] localVariables = new ILocalVariable[length];
+	char[][] argumentNames = info.getArgumentNames();
+	if (argumentNames == null || argumentNames.length < length) {
+		argumentNames = new char[length][];
+		for (int j = 0; j < length; j++) {
+			argumentNames[j] = ("arg" + j).toCharArray(); //$NON-NLS-1$
+		}
+	}
+	int startIndex = 0;
+	try {
+		if (isConstructor()) {
+			IType declaringType = this.getDeclaringType();
+			if (declaringType.isEnum()) {
+				startIndex = 2;
+			} else if (declaringType.isMember()
+					&& !Flags.isStatic(declaringType.getFlags())) {
+				startIndex = 1;
+			}
+		}
+	} catch(JavaModelException e) {
+		// ignore
+	}
+	for (int i= 0; i < length; i++) {
+		if (i < startIndex) {
+			LocalVariable localVariable = new LocalVariable(
+					this,
+					new String(argumentNames[i]),
+					0,
+					-1,
+					0,
+					-1,
+					this.parameterTypes[i],
+					null,
+					-1,
+					true);
+			localVariables[i] = localVariable;
+			localVariable.annotations = Annotation.NO_ANNOTATIONS;
+		} else {
+			LocalVariable localVariable = new LocalVariable(
+					this,
+					new String(argumentNames[i]),
+					0,
+					-1,
+					0,
+					-1,
+					this.parameterTypes[i],
+					null,
+					-1,
+					true);
+			localVariables[i] = localVariable;
+			IAnnotation[] annotations = getAnnotations(localVariable, info.getParameterAnnotations(i - startIndex, getDeclaringType().getElementName().toCharArray()));
+			localVariable.annotations = annotations;
+		}
+	}
+	return localVariables;
+}
+/*
+ * @see IMethod
+ */
+public String[] getParameterTypes() {
+	return this.parameterTypes;
+}
+public String[] getRawParameterNames() throws JavaModelException {
+	IBinaryMethod info = (IBinaryMethod) getElementInfo();
+	int paramCount = Signature.getParameterCount(new String(info.getMethodDescriptor()));
+	return getRawParameterNames(paramCount);
+}
+
+private String[] getRawParameterNames(int paramCount) {
+	String[] result = new String[paramCount];
+	for (int i = 0; i < paramCount; i++) {
+		result[i] = "arg" + i; //$NON-NLS-1$
+	}
+	return result;
+}
+/*
+ * @see IMethod
+ */
+public String getReturnType() throws JavaModelException {
+	if (this.returnType == null) {
+		IBinaryMethod info = (IBinaryMethod) getElementInfo();
+		this.returnType = getReturnType(info);
+	}
+	return this.returnType;
+}
+
+private String getReturnType(IBinaryMethod info) {
+	char[] genericSignature = info.getGenericSignature();
+	char[] signature = genericSignature == null ? info.getMethodDescriptor() : genericSignature;
+	char[] dotBasedSignature = CharOperation.replaceOnCopy(signature, '/', '.');
+	String returnTypeName= Signature.getReturnType(new String(dotBasedSignature));
+	return new String(ClassFile.translatedName(returnTypeName.toCharArray()));
+}
+
+/*
+ * @see IMethod
+ */
+public String getSignature() throws JavaModelException {
+	IBinaryMethod info = (IBinaryMethod) getElementInfo();
+	return new String(info.getMethodDescriptor());
+}
+
+public ITypeParameter getTypeParameter(String typeParameterName) {
+	return new TypeParameter(this, typeParameterName);
+}
+
+public ITypeParameter[] getTypeParameters() throws JavaModelException {
+	String[] typeParameterSignatures = getTypeParameterSignatures();
+	int length = typeParameterSignatures.length;
+	if (length == 0) return TypeParameter.NO_TYPE_PARAMETERS;
+	ITypeParameter[] typeParameters = new ITypeParameter[length];
+	for (int i = 0; i < typeParameterSignatures.length; i++) {
+		String typeParameterName = Signature.getTypeVariable(typeParameterSignatures[i]);
+		typeParameters[i] = new TypeParameter(this, typeParameterName);
+	}
+	return typeParameters;
+}
+/**
+ * @see IMethod#getTypeParameterSignatures()
+ * @since 3.0
+ * @deprecated
+ */
+public String[] getTypeParameterSignatures() throws JavaModelException {
+	IBinaryMethod info = (IBinaryMethod) getElementInfo();
+	char[] genericSignature = info.getGenericSignature();
+	if (genericSignature == null)
+		return CharOperation.NO_STRINGS;
+	char[] dotBasedSignature = CharOperation.replaceOnCopy(genericSignature, '/', '.');
+	char[][] typeParams = Signature.getTypeParameters(dotBasedSignature);
+	return CharOperation.toStrings(typeParams);
+}
+
+/**
+ * @see org.eclipse.jdt.internal.core.JavaElement#hashCode()
+ */
+public int hashCode() {
+   int hash = super.hashCode();
+	for (int i = 0, length = this.parameterTypes.length; i < length; i++) {
+	    hash = Util.combineHashCodes(hash, getErasedParameterType(i).hashCode());
+	}
+	return hash;
+}
+/*
+ * @see IMethod
+ */
+public boolean isConstructor() throws JavaModelException {
+	if (!getElementName().equals(this.parent.getElementName())) {
+		// faster than reaching the info
+		return false;
+	}
+	IBinaryMethod info = (IBinaryMethod) getElementInfo();
+	return info.isConstructor();
+}
+/*
+ * @see IMethod#isLambdaMethod()
+ */
+public boolean isLambdaMethod() {
+	return false;
+}
+/*
+ * @see IMethod#isMainMethod()
+ */
+public boolean isMainMethod() throws JavaModelException {
+	return this.isMainMethod(this);
+}
 private boolean isOpenParenForMethod(String javaDoc, String methodName, int index) {
 	/*
 	 * Annotations can have parameters associated with them, so we need to validate that this parameter list is
@@ -429,6 +565,44 @@ private boolean isOpenParenForMethod(String javaDoc, String methodName, int inde
 			scanningTag = false;
 	}
 	return false;
+}
+/* (non-Javadoc)
+ * @see org.eclipse.jdt.core.IMethod#isResolved()
+ */
+public boolean isResolved() {
+	return false;
+}
+/*
+ * @see IMethod#isSimilar(IMethod)
+ */
+public boolean isSimilar(IMethod method) {
+	return
+		areSimilarMethods(
+			getElementName(), getParameterTypes(),
+			method.getElementName(), method.getParameterTypes(),
+			null);
+}
+public String readableName() {
+
+	StringBuffer buffer = new StringBuffer(super.readableName());
+	buffer.append("("); //$NON-NLS-1$
+	String[] paramTypes = this.parameterTypes;
+	int length;
+	if (paramTypes != null && (length = paramTypes.length) > 0) {
+		for (int i = 0; i < length; i++) {
+			buffer.append(Signature.toString(paramTypes[i]));
+			if (i < length - 1) {
+				buffer.append(", "); //$NON-NLS-1$
+			}
+		}
+	}
+	buffer.append(")"); //$NON-NLS-1$
+	return buffer.toString();
+}
+public JavaElement resolved(Binding binding) {
+	SourceRefElement resolvedHandle = new ResolvedBinaryMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
+	resolvedHandle.occurrenceCount = this.occurrenceCount;
+	return resolvedHandle;
 }
 private char[][] splitParameters(char[] parametersSource, int paramCount) {
 	// we have generic types as one of the parameter types
@@ -490,121 +664,14 @@ private char[][] splitParameters(char[] parametersSource, int paramCount) {
 	}
 	return params;
 }
-/*
- * @see IMethod
- */
-public String[] getParameterTypes() {
-	return this.parameterTypes;
-}
 
-// https://bugs.eclipse.org/bugs/show_bug.cgi?id=299384
-private String [] getErasedParameterTypes() {
-	if (this.erasedParamaterTypes == null) {
-		int paramCount = this.parameterTypes.length;
-		String [] erasedTypes = new String [paramCount];
-		boolean erasureNeeded = false;
-		for (int i = 0; i < paramCount; i++) {
-			String parameterType = this.parameterTypes[i];
-			if ((erasedTypes[i] = Signature.getTypeErasure(parameterType)) != parameterType)
-				erasureNeeded = true;
-		}
-		this.erasedParamaterTypes = erasureNeeded ? erasedTypes : this.parameterTypes;
-	}
-	return this.erasedParamaterTypes;
-}
-private String getErasedParameterType(int index) {
-	return getErasedParameterTypes()[index];
-}
-
-public ITypeParameter getTypeParameter(String typeParameterName) {
-	return new TypeParameter(this, typeParameterName);
-}
-
-public ITypeParameter[] getTypeParameters() throws JavaModelException {
-	String[] typeParameterSignatures = getTypeParameterSignatures();
-	int length = typeParameterSignatures.length;
-	if (length == 0) return TypeParameter.NO_TYPE_PARAMETERS;
-	ITypeParameter[] typeParameters = new ITypeParameter[length];
-	for (int i = 0; i < typeParameterSignatures.length; i++) {
-		String typeParameterName = Signature.getTypeVariable(typeParameterSignatures[i]);
-		typeParameters[i] = new TypeParameter(this, typeParameterName);
-	}
-	return typeParameters;
-}
-
-/**
- * @see IMethod#getTypeParameterSignatures()
- * @since 3.0
- * @deprecated
- */
-public String[] getTypeParameterSignatures() throws JavaModelException {
-	IBinaryMethod info = (IBinaryMethod) getElementInfo();
-	char[] genericSignature = info.getGenericSignature();
-	if (genericSignature == null)
-		return CharOperation.NO_STRINGS;
-	char[] dotBasedSignature = CharOperation.replaceOnCopy(genericSignature, '/', '.');
-	char[][] typeParams = Signature.getTypeParameters(dotBasedSignature);
-	return CharOperation.toStrings(typeParams);
-}
-
-public String[] getRawParameterNames() throws JavaModelException {
-	IBinaryMethod info = (IBinaryMethod) getElementInfo();
-	int paramCount = Signature.getParameterCount(new String(info.getMethodDescriptor()));
-	return getRawParameterNames(paramCount);
-}
-private String[] getRawParameterNames(int paramCount) {
-	String[] result = new String[paramCount];
-	for (int i = 0; i < paramCount; i++) {
-		result[i] = "arg" + i; //$NON-NLS-1$
-	}
-	return result;
-}
-
-/*
- * @see IMethod
- */
-public String getReturnType() throws JavaModelException {
-	if (this.returnType == null) {
-		IBinaryMethod info = (IBinaryMethod) getElementInfo();
-		this.returnType = getReturnType(info);
-	}
-	return this.returnType;
-}
-private String getReturnType(IBinaryMethod info) {
-	char[] genericSignature = info.getGenericSignature();
-	char[] signature = genericSignature == null ? info.getMethodDescriptor() : genericSignature;
-	char[] dotBasedSignature = CharOperation.replaceOnCopy(signature, '/', '.');
-	String returnTypeName= Signature.getReturnType(new String(dotBasedSignature));
-	return new String(ClassFile.translatedName(returnTypeName.toCharArray()));
-}
-/*
- * @see IMethod
- */
-public String getSignature() throws JavaModelException {
-	IBinaryMethod info = (IBinaryMethod) getElementInfo();
-	return new String(info.getMethodDescriptor());
-}
-/**
- * @see org.eclipse.jdt.internal.core.JavaElement#hashCode()
- */
-public int hashCode() {
-   int hash = super.hashCode();
-	for (int i = 0, length = this.parameterTypes.length; i < length; i++) {
-	    hash = Util.combineHashCodes(hash, getErasedParameterType(i).hashCode());
-	}
-	return hash;
-}
 @Override
-public boolean hCanEqual(Object obj) {
-	return obj instanceof BinaryMethod;
-}
-@Override
-public void hToStringBody(StringBuilder builder, Object info, IContext context) {
+public void toStringBody_(StringBuilder builder, Object info, IContext context) {
 	if (info == null) {
-		hToStringName(builder, context);
+		toStringName_(builder, context);
 		builder.append(" (not open)"); //$NON-NLS-1$
 	} else if (info == NO_BODY) {
-		hToStringName(builder, context);
+		toStringName_(builder, context);
 	} else {
 		IBinaryMethod methodInfo = (IBinaryMethod) info;
 		int flags = methodInfo.getModifiers();
@@ -617,10 +684,6 @@ public void hToStringBody(StringBuilder builder, Object info, IContext context) 
 		}
 		toStringName(builder, flags);
 	}
-}
-@Override
-public void hToStringName(StringBuilder builder, IContext context) {
-	toStringName(builder, 0);
 }
 private void toStringName(StringBuilder builder, int flags) {
 	builder.append(getElementName());
@@ -655,71 +718,8 @@ private void toStringName(StringBuilder builder, int flags) {
 		builder.append(this.occurrenceCount);
 	}
 }
-/*
- * @see IMethod
- */
-public boolean isConstructor() throws JavaModelException {
-	if (!getElementName().equals(this.parent.getElementName())) {
-		// faster than reaching the info
-		return false;
-	}
-	IBinaryMethod info = (IBinaryMethod) getElementInfo();
-	return info.isConstructor();
-}
-/*
- * @see IMethod#isMainMethod()
- */
-public boolean isMainMethod() throws JavaModelException {
-	return this.isMainMethod(this);
-}
-/*
- * @see IMethod#isLambdaMethod()
- */
-public boolean isLambdaMethod() {
-	return false;
-}
-/* (non-Javadoc)
- * @see org.eclipse.jdt.core.IMethod#isResolved()
- */
-public boolean isResolved() {
-	return false;
-}
-/*
- * @see IMethod#isSimilar(IMethod)
- */
-public boolean isSimilar(IMethod method) {
-	return
-		areSimilarMethods(
-			getElementName(), getParameterTypes(),
-			method.getElementName(), method.getParameterTypes(),
-			null);
-}
-
-public String readableName() {
-
-	StringBuffer buffer = new StringBuffer(super.readableName());
-	buffer.append("("); //$NON-NLS-1$
-	String[] paramTypes = this.parameterTypes;
-	int length;
-	if (paramTypes != null && (length = paramTypes.length) > 0) {
-		for (int i = 0; i < length; i++) {
-			buffer.append(Signature.toString(paramTypes[i]));
-			if (i < length - 1) {
-				buffer.append(", "); //$NON-NLS-1$
-			}
-		}
-	}
-	buffer.append(")"); //$NON-NLS-1$
-	return buffer.toString();
-}
-public JavaElement resolved(Binding binding) {
-	SourceRefElement resolvedHandle = new ResolvedBinaryMethod(this.parent, this.name, this.parameterTypes, new String(binding.computeUniqueKey()));
-	resolvedHandle.occurrenceCount = this.occurrenceCount;
-	return resolvedHandle;
-}
-public String getAttachedJavadoc(IProgressMonitor monitor) throws JavaModelException {
-	JavadocContents javadocContents = ((BinaryType) this.getDeclaringType()).getJavadocContents(monitor);
-	if (javadocContents == null) return null;
-	return javadocContents.getMethodDoc(this);
+@Override
+public void toStringName_(StringBuilder builder, IContext context) {
+	toStringName(builder, 0);
 }
 }

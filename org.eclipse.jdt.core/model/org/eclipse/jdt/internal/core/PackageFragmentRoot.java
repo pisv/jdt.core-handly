@@ -150,28 +150,13 @@ public void attachSource(IPath sourcePath, IPath rootPath, IProgressMonitor moni
 	}
 }
 
-SourceMapper createSourceMapper(IPath sourcePath, IPath rootPath) throws JavaModelException {
-	IClasspathEntry entry = ((JavaProject) getParent()).getClasspathEntryFor(getPath());
-	String encoding = (entry== null) ? null : ((ClasspathEntry) entry).getSourceAttachmentEncoding();
-	SourceMapper mapper = new SourceMapper(
-		sourcePath,
-		rootPath == null ? null : rootPath.toOSString(),
-		getJavaProject().getOptions(true),// cannot use workspace options if external jar is 1.5 jar and workspace options are 1.4 options
-		encoding);
-
-	return mapper;
-}
-/*
- * @see org.eclipse.jdt.core.IPackageFragmentRoot#delete
- */
-public void delete(
-	int updateResourceFlags,
-	int updateModelFlags,
-	IProgressMonitor monitor)
-	throws JavaModelException {
-
-	DeletePackageFragmentRootOperation op = new DeletePackageFragmentRootOperation(this, updateResourceFlags, updateModelFlags);
-	op.runOperation(monitor);
+@Override
+public void buildStructure_(IContext context, IProgressMonitor pm) throws CoreException {
+	PackageFragmentRootInfo info = createElementInfo();
+	IResource underlyingResource = resource();
+	info.setRootKind(determineKind(underlyingResource));
+	computeChildren(info, underlyingResource);
+	context.get(NEW_ELEMENTS).put(this, info);
 }
 
 /**
@@ -191,14 +176,14 @@ protected void computeChildren(PackageFragmentRootInfo info, IResource underlyin
 			char[][] inclusionPatterns = fullInclusionPatternChars();
 			char[][] exclusionPatterns = fullExclusionPatternChars();
 			computeFolderChildren(rootFolder, !Util.isExcluded(rootFolder, inclusionPatterns, exclusionPatterns), CharOperation.NO_STRINGS, vChildren, inclusionPatterns, exclusionPatterns);
-			IJavaElement[] children = new IJavaElement[vChildren.size()];
+			JavaElement[] children = new JavaElement[vChildren.size()];
 			vChildren.toArray(children);
 			info.setChildren(children);
 			info.setIsStructureKnown(true);
 		}
 	} catch (JavaModelException e) {
 		//problem resolving children; structure remains unknown
-		info.setChildren(new IJavaElement[]{});
+		info.setChildren(NO_ELEMENTS);
 		throw e;
 	}
 }
@@ -227,7 +212,7 @@ protected void computeFolderChildren(IContainer folder, boolean isIncluded, Stri
 			String sourceLevel = otherJavaProject.getOption(JavaCore.COMPILER_SOURCE, true);
 			String complianceLevel = otherJavaProject.getOption(JavaCore.COMPILER_COMPLIANCE, true);
 			JavaProject javaProject = (JavaProject) getJavaProject();
-			JavaModelManager manager = hModelManager();
+			JavaModelManager manager = getJavaModelManager();
 			for (int i = 0; i < length; i++) {
 				IResource member = members[i];
 				String memberName = member.getName();
@@ -281,7 +266,6 @@ public void copy(
 		new CopyPackageFragmentRootOperation(this, destination, updateResourceFlags, updateModelFlags, sibling);
 	op.runOperation(monitor);
 }
-
 /**
  * Returns a new element info for this element.
  */
@@ -296,6 +280,31 @@ public IPackageFragment createPackageFragment(String pkgName, boolean force, IPr
 	CreatePackageFragmentOperation op = new CreatePackageFragmentOperation(this, pkgName, force);
 	op.runOperation(monitor);
 	return getPackageFragment(op.pkgName);
+}
+
+SourceMapper createSourceMapper(IPath sourcePath, IPath rootPath) throws JavaModelException {
+	IClasspathEntry entry = ((JavaProject) getParent()).getClasspathEntryFor(getPath());
+	String encoding = (entry== null) ? null : ((ClasspathEntry) entry).getSourceAttachmentEncoding();
+	SourceMapper mapper = new SourceMapper(
+		sourcePath,
+		rootPath == null ? null : rootPath.toOSString(),
+		getJavaProject().getOptions(true),// cannot use workspace options if external jar is 1.5 jar and workspace options are 1.4 options
+		encoding);
+
+	return mapper;
+}
+
+/*
+ * @see org.eclipse.jdt.core.IPackageFragmentRoot#delete
+ */
+public void delete(
+	int updateResourceFlags,
+	int updateModelFlags,
+	IProgressMonitor monitor)
+	throws JavaModelException {
+
+	DeletePackageFragmentRootOperation op = new DeletePackageFragmentRootOperation(this, updateResourceFlags, updateModelFlags);
+	op.runOperation(monitor);
 }
 
 /**
@@ -406,23 +415,19 @@ public char[][] fullInclusionPatternChars() {
 		return null;
 	}
 }
+
 public String getElementName() {
 	IResource res = resource();
 	if (res instanceof IFolder)
 		return ((IFolder) res).getName();
 	return ""; //$NON-NLS-1$
 }
+
 /**
  * @see IJavaElement
  */
 public int getElementType() {
 	return PACKAGE_FRAGMENT_ROOT;
-}
-/**
- * @see JavaElement#getHandleMemento()
- */
-protected char getHandleMementoDelimiter() {
-	return JavaElement.JEM_PACKAGEFRAGMENTROOT;
 }
 /*
  * @see JavaElement
@@ -475,35 +480,23 @@ protected void getHandleMemento(StringBuffer buff) {
 	escapeMementoName(buff, path.toString());
 }
 /**
+ * @see JavaElement#getHandleMemento()
+ */
+protected char getHandleMementoDelimiter() {
+	return JavaElement.JEM_PACKAGEFRAGMENTROOT;
+}
+/**
  * @see IPackageFragmentRoot
  */
 public int getKind() throws JavaModelException {
 	return ((PackageFragmentRootInfo)getElementInfo()).getRootKind();
 }
-
-/*
- * A version of getKind() that doesn't update the timestamp of the info in the Java model cache
- * to speed things up
- */
-int internalKind() throws JavaModelException {
-	PackageFragmentRootInfo info = (PackageFragmentRootInfo)hPeekAtBody();
-	if (info == null) {
-		try {
-			info = (PackageFragmentRootInfo) hOpen(EMPTY_CONTEXT, null);
-		} catch (CoreException e) {
-			throw Util.toJavaModelException(e);
-		}
-	}
-	return info.getRootKind();
-}
-
 /**
  * Returns an array of non-java resources contained in the receiver.
  */
 public Object[] getNonJavaResources() throws JavaModelException {
 	return ((PackageFragmentRootInfo) getElementInfo()).getNonJavaResources(getJavaProject(), resource(), this);
 }
-
 /**
  * @see IPackageFragmentRoot
  */
@@ -512,9 +505,11 @@ public IPackageFragment getPackageFragment(String packageName) {
 	String[] pkgName = Util.getTrimmedSimpleNames(packageName);
 	return getPackageFragment(pkgName);
 }
+
 public PackageFragment getPackageFragment(String[] pkgName) {
 	return new PackageFragment(this, pkgName);
 }
+
 /**
  * Returns the package name for the given folder
  * (which is a decendent of this root).
@@ -539,10 +534,6 @@ protected String getPackageName(IFolder folder) {
  */
 public IPath getPath() {
 	return internalPath();
-}
-
-public IPath internalPath() {
-	return resource().getFullPath();
 }
 /*
  * @see IPackageFragmentRoot
@@ -576,19 +567,6 @@ public IClasspathEntry getResolvedClasspathEntry() throws JavaModelException {
 		throw new JavaModelException(new JavaModelStatus(IJavaModelStatusConstants.ELEMENT_NOT_ON_CLASSPATH, this));
 	}
 	return resolvedEntry;
-}
-
-
-public IResource resource() {
-	if (this.resource != null) // perf improvement to avoid message send in resource()
-		return this.resource;
-	return super.resource();
-}
-/*
- * @see IJavaElement
- */
-public IResource resource(PackageFragmentRoot root) {
-	return this.resource;
 }
 
 /**
@@ -627,16 +605,6 @@ public IPath getSourceAttachmentPath() throws JavaModelException {
 }
 
 /**
- * For use by <code>AttachSourceOperation</code> only.
- * Sets the source mapper associated with this root.
- */
-public void setSourceMapper(SourceMapper mapper) throws JavaModelException {
-	((PackageFragmentRootInfo) getElementInfo()).setSourceMapper(mapper);
-}
-
-
-
-/**
  * @see IPackageFragmentRoot
  */
 public IPath getSourceAttachmentRootPath() throws JavaModelException {
@@ -668,7 +636,6 @@ public IPath getSourceAttachmentRootPath() throws JavaModelException {
 
 	return null;
 }
-
 /**
  * @see JavaElement
  */
@@ -693,7 +660,6 @@ public SourceMapper getSourceMapper() {
 	}
 	return mapper;
 }
-
 /**
  * @see IJavaElement
  */
@@ -702,6 +668,7 @@ public IResource getUnderlyingResource() throws JavaModelException {
 	return resource();
 }
 
+
 /**
  * @see IParent
  */
@@ -709,22 +676,93 @@ public boolean hasChildren() throws JavaModelException {
 	// a package fragment root always has the default package as a child
 	return true;
 }
-
 public int hashCode() {
 	return resource().hashCode();
 }
 
-@Override
-public void hBuildStructure(IContext context, IProgressMonitor pm) throws CoreException {
-	PackageFragmentRootInfo info = createElementInfo();
-	IResource underlyingResource = resource();
-	info.setRootKind(determineKind(underlyingResource));
-	computeChildren(info, underlyingResource);
-	context.get(NEW_ELEMENTS).put(this, info);
+public boolean ignoreOptionalProblems() {
+	try {
+		return ((PackageFragmentRootInfo) getElementInfo()).ignoreOptionalProblems(this);
+	} catch (JavaModelException e) {
+		return false;
+	}
+}
+
+/*
+ * A version of getKind() that doesn't update the timestamp of the info in the Java model cache
+ * to speed things up
+ */
+int internalKind() throws JavaModelException {
+	PackageFragmentRootInfo info = (PackageFragmentRootInfo) peekAtBody_();
+	if (info == null) {
+		try {
+			info = (PackageFragmentRootInfo) open_(EMPTY_CONTEXT, null);
+		} catch (CoreException e) {
+			throw Util.toJavaModelException(e);
+		}
+	}
+	return info.getRootKind();
+}
+
+
+
+public IPath internalPath() {
+	return resource().getFullPath();
+}
+
+/**
+ * @see IPackageFragmentRoot
+ */
+public boolean isArchive() {
+	return false;
+}
+
+/**
+ * @see IPackageFragmentRoot
+ */
+public boolean isExternal() {
+	return false;
+}
+
+/*
+ * @see org.eclipse.jdt.core.IPackageFragmentRoot#move
+ */
+public void move(
+	IPath destination,
+	int updateResourceFlags,
+	int updateModelFlags,
+	IClasspathEntry sibling,
+	IProgressMonitor monitor)
+	throws JavaModelException {
+
+	MovePackageFragmentRootOperation op =
+		new MovePackageFragmentRootOperation(this, destination, updateResourceFlags, updateModelFlags, sibling);
+	op.runOperation(monitor);
+}
+
+public IResource resource() {
+	if (this.resource != null) // perf improvement to avoid message send in resource()
+		return this.resource;
+	return super.resource();
+}
+
+/*
+ * @see IJavaElement
+ */
+public IResource resource(PackageFragmentRoot root) {
+	return this.resource;
+}
+
+/**
+ * For use by <code>AttachSourceOperation</code> only.
+ * Sets the source mapper associated with this root.
+ */
+public void setSourceMapper(SourceMapper mapper) throws JavaModelException {
+	((PackageFragmentRootInfo) getElementInfo()).setSourceMapper(mapper);
 }
 
 @Override
-public void hToStringBody(StringBuilder builder, Object body, IContext context) {
+public void toStringBody_(StringBuilder builder, Object body, IContext context) {
 	IPath path = getPath();
 	if (isExternal()) {
 		builder.append(path.toOSString());
@@ -743,38 +781,15 @@ public void hToStringBody(StringBuilder builder, Object body, IContext context) 
 }
 
 @Override
-public void hValidateExistence(IContext context) throws CoreException {
+public void validateExistence_(IContext context) throws CoreException {
 	// check whether this pkg fragment root can be opened
 	IStatus status = validateOnClasspath();
 	if (!status.isOK())
 		throw newJavaModelException(status);
 	IResource underlyingResource = resource();
 	if (!resourceExists(underlyingResource))
-		throw hDoesNotExistException();
+		throw newDoesNotExistException_();
 }
-
-public boolean ignoreOptionalProblems() {
-	try {
-		return ((PackageFragmentRootInfo) getElementInfo()).ignoreOptionalProblems(this);
-	} catch (JavaModelException e) {
-		return false;
-	}
-}
-
-/**
- * @see IPackageFragmentRoot
- */
-public boolean isArchive() {
-	return false;
-}
-
-/**
- * @see IPackageFragmentRoot
- */
-public boolean isExternal() {
-	return false;
-}
-
 /*
  * Validate whether this package fragment root is on the classpath of its project.
  */
@@ -793,21 +808,6 @@ protected IStatus validateOnClasspath() {
 		return e.getJavaModelStatus();
 	}
 	return new JavaModelStatus(IJavaModelStatusConstants.ELEMENT_NOT_ON_CLASSPATH, this);
-}
-/*
- * @see org.eclipse.jdt.core.IPackageFragmentRoot#move
- */
-public void move(
-	IPath destination,
-	int updateResourceFlags,
-	int updateModelFlags,
-	IClasspathEntry sibling,
-	IProgressMonitor monitor)
-	throws JavaModelException {
-
-	MovePackageFragmentRootOperation op =
-		new MovePackageFragmentRootOperation(this, destination, updateResourceFlags, updateModelFlags, sibling);
-	op.runOperation(monitor);
 }
 
 /**

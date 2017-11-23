@@ -68,6 +68,9 @@ public IImportDeclaration getImport(String importName) {
 protected IImportDeclaration getImport(String importName, boolean isOnDemand) {
 	return new ImportDeclaration(this, importName, isOnDemand);
 }
+public ISourceRange getNameRange() {
+	return null;
+}
 /*
  * @see JavaElement#getPrimaryElement(boolean)
  */
@@ -92,25 +95,20 @@ public String readableName() {
 
 	return null;
 }
-public ISourceRange getNameRange() {
-	return null;
-}
 @Override
-public String hToString(IContext context)
-{
+public String toString_(IContext context) {
 	ToStringOptions.FormatStyle style = context.getOrDefault(ToStringOptions.FORMAT_STYLE);
 	if (style == ToStringOptions.FormatStyle.FULL || style == ToStringOptions.FormatStyle.LONG)
 	{
 		StringBuilder builder = new StringBuilder();
-		hToStringChildren(builder, hPeekAtBody(), with(of(ToStringOptions.FORMAT_STYLE,
+		toStringChildren_(builder, peekAtBody_(), with(of(ToStringOptions.FORMAT_STYLE,
 			ToStringOptions.FormatStyle.SHORT), context));
 		return builder.toString();
 	}
-	return super.hToString(context);
+	return super.toString_(context);
 }
 @Override
-public void hToStringName(StringBuilder builder, IContext context)
-{
+public void toStringName_(StringBuilder builder, IContext context) {
 	builder.append("<import container>"); //$NON-NLS-1$
 }
 }

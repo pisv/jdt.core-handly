@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2014 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -31,7 +31,7 @@ public class SourceTypeElementInfo extends AnnotatableInfo implements ISourceTyp
 	protected static final SourceMethod[] NO_METHODS = new SourceMethod[0];
 	protected static final SourceType[] NO_TYPES = new SourceType[0];
 
-	protected IJavaElement[] children = JavaElement.NO_ELEMENTS;
+	protected JavaElement[] children = JavaElement.NO_ELEMENTS;
 	
 	/**
 	 * The name of the superclass for this type. This name
@@ -78,7 +78,7 @@ public HashMap getCategories() {
 	return this.categories;
 }
 
-public IJavaElement[] getChildren() {
+public JavaElement[] getChildren() {
 	return this.children;
 }
 

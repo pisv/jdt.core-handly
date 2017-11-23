@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2015 IBM Corporation and others.
+ * Copyright (c) 2000, 2017 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -21,7 +21,7 @@ public class OpenableElementInfo extends JavaElementInfo {
 	 * object. This is an empty array if this element has
 	 * no children.
 	 */
-	protected volatile IJavaElement[] children = JavaElement.NO_ELEMENTS;
+	protected volatile JavaElement[] children = JavaElement.NO_ELEMENTS;
 	
 	/**
 	 * Is the structure of this element known
@@ -29,24 +29,24 @@ public class OpenableElementInfo extends JavaElementInfo {
 	 */
 	protected boolean isStructureKnown = false;
 
-	public void addChild(IJavaElement child) {
-		IJavaElement[] oldChildren = this.children;
+	public void addChild(JavaElement child) {
+		JavaElement[] oldChildren = this.children;
 		int length = oldChildren.length;
 		if (length == 0) {
-			this.children = new IJavaElement[] {child};
+			this.children = new JavaElement[] {child};
 		} else {
 			for (int i = 0; i < length; i++) {
 				if (oldChildren[i].equals(child))
 					return; // already included
 			}
-			IJavaElement[] newChildren = new IJavaElement[length+1];
+			JavaElement[] newChildren = new JavaElement[length+1];
 			System.arraycopy(oldChildren, 0, newChildren, 0, length);
 			newChildren[length] = child;
 			this.children = newChildren;
 		}
 	}
 
-	public IJavaElement[] getChildren() {
+	public JavaElement[] getChildren() {
 		return this.children;
 	}
 	
@@ -57,14 +57,14 @@ public class OpenableElementInfo extends JavaElementInfo {
 		return this.isStructureKnown;
 	}
 
-	public void removeChild(IJavaElement child) {
-		IJavaElement[] oldChildren = this.children;
+	public void removeChild(JavaElement child) {
+		JavaElement[] oldChildren = this.children;
 		for (int i = 0, length = oldChildren.length; i < length; i++) {
 			if (oldChildren[i].equals(child)) {
 				if (length == 1) {
 					this.children = JavaElement.NO_ELEMENTS;
 				} else {
-					IJavaElement[] newChildren = new IJavaElement[length-1];
+					JavaElement[] newChildren = new JavaElement[length-1];
 					System.arraycopy(oldChildren, 0, newChildren , 0, i);
 					if (i < length-1)
 						System.arraycopy(oldChildren, i+1, newChildren, i, length-1-i);
@@ -75,7 +75,7 @@ public class OpenableElementInfo extends JavaElementInfo {
 		}
 	}
 
-	public void setChildren(IJavaElement[] children) {
+	public void setChildren(JavaElement[] children) {
 		this.children = children;
 	}
 
