@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2017 IBM Corporation and others.
+ * Copyright (c) 2000, 2013 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -11,18 +11,17 @@
 package org.eclipse.jdt.internal.core;
 
 import java.util.ArrayList;
-import java.util.List;
 
-import org.eclipse.handly.util.OverflowingLruCache;
 import org.eclipse.jdt.core.IBuffer;
-import org.eclipse.jdt.core.IOpenable;
+import org.eclipse.jdt.internal.core.util.LRUCache;
 
 /**
  * An LRU cache of <code>IBuffers</code>.
  */
-public class BufferCache extends OverflowingLruCache<IOpenable, IBuffer> {
+@SuppressWarnings({ "rawtypes", "unchecked" })
+public class BufferCache extends OverflowingLRUCache {
 
-	private ThreadLocal<List<IBuffer>> buffersToClose = new ThreadLocal<>();
+	private ThreadLocal buffersToClose = new ThreadLocal();
 /**
  * Constructs a new buffer cache of the given size.
  */
@@ -42,17 +41,17 @@ public BufferCache(int size, int overflow) {
  * <p>NOTE: this triggers an external removal of this buffer
  * by closing the buffer.
  */
-protected boolean close(LruCacheEntry<IOpenable, IBuffer> entry) {
-	IBuffer buffer= entry.value;
+protected boolean close(LRUCacheEntry entry) {
+	IBuffer buffer= (IBuffer) entry.value;
 
 	// prevent buffer that have unsaved changes or working copy buffer to be removed
 	// see https://bugs.eclipse.org/bugs/show_bug.cgi?id=39311
 	if (!((Openable)buffer.getOwner()).canBufferBeRemovedFromCache(buffer)) {
 		return false;
 	} else {
-		List<IBuffer> buffers = this.buffersToClose.get();
+		ArrayList buffers = (ArrayList) this.buffersToClose.get();
 		if (buffers == null) {
-			buffers = new ArrayList<>();
+			buffers = new ArrayList();
 			this.buffersToClose.set(buffers);
 		}
 		buffers.add(buffer);
@@ -61,18 +60,18 @@ protected boolean close(LruCacheEntry<IOpenable, IBuffer> entry) {
 }
 
 void closeBuffers() {
-	List<IBuffer> buffers = this.buffersToClose.get();
+	ArrayList buffers = (ArrayList) this.buffersToClose.get();
 	if (buffers == null)
 		return;
 	this.buffersToClose.set(null);
 	for (int i = 0, length = buffers.size(); i < length; i++) {
-		buffers.get(i).close();
+		((IBuffer) buffers.get(i)).close();
 	}
 }
 	/**
-	 * Returns a new instance of the receiver.
+	 * Returns a new instance of the reciever.
 	 */
-	protected OverflowingLruCache<IOpenable, IBuffer> newInstance(int size, int newOverflow) {
+	protected LRUCache newInstance(int size, int newOverflow) {
 		return new BufferCache(size, newOverflow);
 	}
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017 1C-Soft LLC.
+ * Copyright (c) 2017, 2018 1C-Soft LLC.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -20,7 +20,7 @@ public class JavaElementManager extends ElementManager {
 	}
 
 	public synchronized String cacheToString(String prefix) {
-		return getJavaModelCache().toStringFillingRatio(prefix);
+		return getJavaModelCache().toStringFillingRation(prefix);
 	}
 
 	/**

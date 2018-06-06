@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2017 IBM Corporation and others.
+ * Copyright (c) 2000, 2018 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -206,8 +206,10 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 */
 	public boolean equals(Object o) {
 
-		if (this == o)
-			return true;
+		if (this == o) return true;
+
+		// Java model parent is null
+		if (this.parent == null) return super.equals(o);
 
 		if (!(o instanceof JavaElement))
 			return false;
@@ -757,6 +759,7 @@ public abstract class JavaElement extends PlatformObject implements IJavaElement
 	 * override this method.
 	 */
 	public int hashCode() {
+		if (this.parent == null) return super.hashCode();
 		return Util.combineHashCodes(getElementName().hashCode(), this.parent.hashCode());
 	}
 

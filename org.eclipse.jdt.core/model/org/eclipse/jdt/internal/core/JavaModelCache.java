@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2017 IBM Corporation and others.
+ * Copyright (c) 2000, 2018 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.eclipse.handly.model.IElement;
-import org.eclipse.handly.model.impl.support.ElementCache;
 import org.eclipse.handly.model.impl.support.IBodyCache;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.internal.core.util.LRUCache;
@@ -156,12 +155,12 @@ public IJavaElement getExistingElement(IJavaElement element) {
 		case IJavaElement.JAVA_PROJECT:
 			return element; // projectCache is a Hashtable and Hashtables don't support getKey(...)
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-			return (IJavaElement) this.rootCache.getKey((IElement) element);
+			return (IJavaElement) this.rootCache.getKey(element);
 		case IJavaElement.PACKAGE_FRAGMENT:
-			return (IJavaElement) this.pkgCache.getKey((IElement) element);
+			return (IJavaElement) this.pkgCache.getKey(element);
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
-			return (IJavaElement) this.openableCache.getKey((IElement) element);
+			return (IJavaElement) this.openableCache.getKey(element);
 		case IJavaElement.TYPE:
 			return element; // jarTypeCache or childrenCache are Hashtables and Hashtables don't support getKey(...)
 		default:
@@ -206,30 +205,30 @@ public Object peek(IElement e) {
 }
 
 @Override
-public void put(IElement e, Object body) {
+public void put(IElement e, Object info) {
 	IJavaElement element = (IJavaElement) e;
 	switch (element.getElementType()) {
 		case IJavaElement.JAVA_MODEL:
-			this.modelInfo = body;
+			this.modelInfo = info;
 			break;
 		case IJavaElement.JAVA_PROJECT:
-			this.projectCache.put(e, body);
-			this.rootCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
+			this.projectCache.put(element, info);
+			this.rootCache.ensureSpaceLimit(info, element);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
-			this.rootCache.put(e, body);
-			this.pkgCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
+			this.rootCache.put(element, info);
+			this.pkgCache.ensureSpaceLimit(info, element);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT:
-			this.pkgCache.put(e, body);
-			this.openableCache.ensureSpaceLimit(((JavaElementInfo)body).getChildren().length, e);
+			this.pkgCache.put(element, info);
+			this.openableCache.ensureSpaceLimit(info, element);
 			break;
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
-			this.openableCache.put(e, body);
+			this.openableCache.put(element, info);
 			break;
 		default:
-			this.childrenCache.put(e, body);
+			this.childrenCache.put(element, info);
 	}
 }
 @Override
@@ -266,15 +265,15 @@ public void remove(IElement e) {
 			break;
 		case IJavaElement.JAVA_PROJECT:
 			this.projectCache.remove(element);
-			this.rootCache.resetSpaceLimit((int) (DEFAULT_ROOT_SIZE * getMemoryRatio()), e);
+			this.rootCache.resetSpaceLimit((int) (DEFAULT_ROOT_SIZE * getMemoryRatio()), element);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT_ROOT:
 			this.rootCache.remove(element);
-			this.pkgCache.resetSpaceLimit((int) (DEFAULT_PKG_SIZE * getMemoryRatio()), e);
+			this.pkgCache.resetSpaceLimit((int) (DEFAULT_PKG_SIZE * getMemoryRatio()), element);
 			break;
 		case IJavaElement.PACKAGE_FRAGMENT:
 			this.pkgCache.remove(element);
-			this.openableCache.resetSpaceLimit((int) (DEFAULT_OPENABLE_SIZE * getMemoryRatio() * getOpenableRatio()), e);
+			this.openableCache.resetSpaceLimit((int) (DEFAULT_OPENABLE_SIZE * getMemoryRatio() * getOpenableRatio()), element);
 			break;
 		case IJavaElement.COMPILATION_UNIT:
 		case IJavaElement.CLASS_FILE:
@@ -291,22 +290,22 @@ protected void removeFromJarTypeCache(BinaryType type) {
 	this.jarTypeCache.flush(type);
 }
 public String toString() {
-	return toStringFillingRatio(""); //$NON-NLS-1$
+	return toStringFillingRation(""); //$NON-NLS-1$
 }
-public String toStringFillingRatio(String prefix) {
+public String toStringFillingRation(String prefix) {
 	StringBuffer buffer = new StringBuffer();
 	buffer.append(prefix);
 	buffer.append("Project cache: "); //$NON-NLS-1$
 	buffer.append(this.projectCache.size());
 	buffer.append(" projects\n"); //$NON-NLS-1$
 	buffer.append(prefix);
-	buffer.append(this.rootCache.toStringFillingRatio("Root cache")); //$NON-NLS-1$
+	buffer.append(this.rootCache.toStringFillingRation("Root cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
-	buffer.append(this.pkgCache.toStringFillingRatio("Package cache")); //$NON-NLS-1$
+	buffer.append(this.pkgCache.toStringFillingRation("Package cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
-	buffer.append(this.openableCache.toStringFillingRatio("Openable cache")); //$NON-NLS-1$
+	buffer.append(this.openableCache.toStringFillingRation("Openable cache")); //$NON-NLS-1$
 	buffer.append('\n');
 	buffer.append(prefix);
 	buffer.append(this.jarTypeCache.toStringFillingRation("Jar type cache")); //$NON-NLS-1$

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017 1C-Soft LLC.
+ * Copyright (c) 2017, 2018 1C-Soft LLC.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -73,5 +73,15 @@ class BufferAdapter implements org.eclipse.handly.buffer.IBuffer {
 	@Override
 	public IDocument getDocument() {
 		return this.document;
+	}
+
+	@Override
+	public void addRef() {
+		// do nothing
+	}
+
+	@Override
+	public void release() {
+		// do nothing
 	}
 }

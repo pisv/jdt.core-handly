@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2017 IBM Corporation and others.
+ * Copyright (c) 2000, 2018 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -219,9 +219,6 @@ public void delete(IJavaElement[] elements, boolean force, IProgressMonitor moni
 		new DeleteElementsOperation(elements, force).runOperation(monitor);
 	}
 }
-public boolean equals(Object o) {
-	return this == o;
-}
 /**
  * @see IJavaElement
  */
@@ -326,9 +323,6 @@ public IWorkspace getWorkspace() {
 	return ResourcesPlugin.getWorkspace();
 }
 
-public int hashCode() {
-	return System.identityHashCode(this);
-}
 /**
  * @see IJavaModel
  */

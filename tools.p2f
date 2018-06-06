@@ -24,12 +24,12 @@
     </iu>
     <iu id='org.eclipse.handly.feature.group'>
       <repositories size='1'>
-        <repository location='http://download.eclipse.org/handly/releases/0.8.1/repository'/>
+        <repository location='http://download.eclipse.org/handly/releases/1.0/repository'/>
       </repositories>
     </iu>
     <iu id='org.eclipse.handly.source.feature.group'>
       <repositories size='1'>
-        <repository location='http://download.eclipse.org/handly/releases/0.8.1/repository'/>
+        <repository location='http://download.eclipse.org/handly/releases/1.0/repository'/>
       </repositories>
     </iu>
   </ius>

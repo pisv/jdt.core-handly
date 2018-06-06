@@ -27,7 +27,7 @@ Require-Bundle: org.eclipse.core.resources;bundle-version="[3.2.0,4.0.0)",
  org.eclipse.core.filesystem;bundle-version="[1.2.0,2.0.0)",
  org.eclipse.jdt.annotation;bundle-version="[1.1.0,2.0.0)";resolution:=optional,
  org.eclipse.jdt.annotation;bundle-version="[2.0.0,3.0.0)";resolution:=optional,
- org.eclipse.handly;bundle-version="[0.8.0,0.9.0)"
+ org.eclipse.handly;bundle-version="[1.0.0,2.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-1.7
 Eclipse-BundleShape: dir
 Bundle-Activator: org.eclipse.jdt.core.tests.Activator
